@@ -22,11 +22,11 @@ typedef struct _clbpt_body * clbpt_body;
 
 /**
  * @brief Set up the environment for CLBPT.
+ * @param dst_platform The initialized platform.
  * @param context OpenCL context that users need to get at first.
- * @param err Error code.
- * @return The initialized platform.
+ * @return Error code.
  */
-clbpt_platform clbptCreatePlatform(cl_context context, int *err);
+int clbptCreatePlatform(clbpt_platform  dst_platform, cl_context context);
 
 /**
  * @brief Release clbpt_platform.
@@ -37,13 +37,13 @@ int clbptReleasePlatform(clbpt_platform platform);
 
 /**
  * @brief Create a new CLBPT.
+ * @param dst_body The B+tree body.
  * @param platform The CLBPT platform.
  * @param level The level of the B+tree.
  * @param record_size The size of record in byte.
- * @param err Error code.
- * @return The B+tree body.
+ * @return Error code.
  */
-clbpt_body clbptCreateBody(clbpt_platform platform, const int level, const size_t record_size, int *err);
+int clbptCreateBody(clbpt_body dst_body,clbpt_platform platform, const int level, const size_t record_size);
 
 /**
  * @brief Release clbpt_body.
@@ -61,11 +61,11 @@ int clbptReleaseBody(clbpt_body body);
  * @param body The CLBPT.
  * @param num_keys Specify the number of input keys.
  * @param keys An array of query keys with size of num_keys.
- * @param record_ptrs After search instructions complete, this array will be filled of pointers pointing to the record.
+ * @param records After search instructions complete, this array will be filled of pointers pointing to the record.
  * 					Hence, it reduces data copy and boosts the performance especially when record is large.
  * @return Error code.
  */
-int clbptEnqueueSearches(clbpt_body body, int num_keys, CLBPT_KEY_TYPE *keys, void **record_ptrs);
+int clbptEnqueueSearches(clbpt_body body, int num_keys, CLBPT_KEY_TYPE *keys, void *records);
 
 /**
  * @brief Enqueue multiple range searches instruction.
@@ -80,10 +80,10 @@ int clbptEnqueueSearches(clbpt_body body, int num_keys, CLBPT_KEY_TYPE *keys, vo
  * @param num_keys Specify the number of input keys.
  * @param l_keys An array of lower bound keys with size of num_keys.
  * @param u_keys An array of upper bound keys with size of num_keys.
- * @param record_list_array After search instructions complete, this array will be filled of lists consisting of record pointers.
+ * @param record_list After search instructions complete, this array will be filled of lists consisting of record pointers.
  * @return Error code.
  */
-int clbptEnqueueRangeSearches(clbpt_body body, int num_keys, CLBPT_KEY_TYPE *l_keys, CLBPT_KEY_TYPE *u_keys, void ***record_list_array);
+int clbptEnqueueRangeSearches(clbpt_body body, int num_keys, CLBPT_KEY_TYPE *l_keys, CLBPT_KEY_TYPE *u_keys, void **record_list);
 
 /**
  * @brief Enqueue multiple insertions instruction.
@@ -111,14 +111,21 @@ int clbptEnqueueInsertions(clbpt_body body, int num_inserts, CLBPT_KEY_TYPE *key
  */
 int clbptEnqueueDeletions(clbpt_body body, int num_deletes, CLBPT_KEY_TYPE *keys);
 
+
 /**
- * @brief Enqueue a barrier to ensure the completion of previously enqueued tasks.
- *
- * This function will block the process until all enqueued tasks has finished.
+* @brief Flush the fetching buffer into the executing stage
+*
+* @param The CLBPT.
+* @return Error code.
+*/
+int clbptFlush(clbpt_body body);
+
+/**
+ * @brief This function will block the process until all enqueued tasks has finished.
  *
  * @param The CLBPT.
  * @return Error code.
  */
-int clbptEnqueueBarrier(clbpt_body body);
+int clbptFinish(clbpt_body body);
 	
 #endif /* __CLBPT_H_INCLUDED */
