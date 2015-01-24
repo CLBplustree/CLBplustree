@@ -1,3 +1,2 @@
 CLBplustree
 ===========
-a Library
