@@ -5,27 +5,25 @@
 #ifndef __CLBPT_H_INCLUDED
 #define __CLBPT_H_INCLUDED
 	
-#ifdef __APPLE__
-#include <OpenCL/opencl.h>
-#else
-#include <CL/cl.h>
-#endif
+#include "clbpt_type.h"
 
-#define CLBPT_KEY_TYPE int
-	
-extern struct _clbpt_tree;
-
-typedef struct _clbpt_tree * clbpt_tree;
+/**
+ * @brief Create a new CLBPT platform.
+ * @param dst_platform The platform.
+ * @param context OpenCL context.
+ * @return Error code.
+ */
+int clbptCreatePlatform(clbpt_platform dst_platform, cl_context context);
 
 /**
  * @brief Create a new CLBPT.
  * @param dst_tree The B+tree.
- * @param platform The CLBPT platform.
- * @param level The level of the B+tree.
+ * @param platform CLBPT platform.
+ * @param degree The degree of the B+tree. 0 for maximum available degree.
  * @param record_size The size of record in byte.
  * @return Error code.
  */
-int clbptCreateTree(clbpt_tree dst_tree, cl_context context, const int level, const size_t record_size);
+int clbptCreateTree(clbpt_tree dst_tree, clbpt_platform platform, const int degree, const size_t record_size);
 
 /**
  * @brief Release clbpt_tree.
