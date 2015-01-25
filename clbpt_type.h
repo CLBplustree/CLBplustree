@@ -2,9 +2,6 @@
  * @file Type definitions of CLBPT.
  */
  
-#ifndef __CLBPT_TYPE_H_INCLUDED
-#define __CLBPT_TYPE_H_INCLUDED
- 
 #include <stdint.h>
 #include <pthread.h>
 #ifdef __APPLE__
@@ -39,6 +36,8 @@ typedef struct _clbpt_leaf_node {
 } clbpt_leaf_node;
 
 typedef	uint64_t clbpt_packet;
+
+typedef struct _clbpt_platform * clbpt_platform;
  
 struct _clbpt_tree {
 	clbpt_platform platform;
@@ -56,7 +55,4 @@ struct _clbpt_tree {
 	clbpt_node *root;
 };
 
-typedef struct _clbpt_platform * clbpt_platform;
 typedef struct _clbpt_tree * clbpt_tree;
-
-#endif
