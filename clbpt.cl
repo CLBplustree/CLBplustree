@@ -99,13 +99,13 @@ clbptPacketSort(
 		const int pivot = getKeyFromPacket(query[num_query >> 1]);
 		
 		for (int i = (num_query * lid) / l_size; i != (num_query * (lid + 1)) / l_size; i++) {
-			if (query[i] < pivot) {
+			if (getKeyFromPacket(query[i]) < pivot) {
 				less_count++;
 			} 
-			if (query[i] > pivot) {
+			if (getKeyFromPacket(query[i]) > pivot) {
 				greater_count++;
 			}
-			if (query[i] == pivot) {
+			if (getKeyFromPacket(query[i]) == pivot) {
 				equal_count++;
 			}
 		}
@@ -113,24 +113,26 @@ clbptPacketSort(
 		less_index = work_group_scan_exclusive_add(less_count);
 		greater_index = work_group_scan_inclusive_add(greater_count);
 		if (gid == l_size - 1) {
-			equal_index_init = greater_index + less_count;
+			equal_index_init = less_index + less_count;
 		}
 		work_group_barrier(CLK_LOCAL_MEM_FENCE);
-		equal_index_init = work_group_broadcast(equal_index_init, l_size -1);
+		greater_index = num_query - greater_index;
+		equal_index_init = work_group_broadcast(equal_index_init, l_size - 1);
 		equal_index = work_group_scan_exclusive_add(equal_count);
 		work_group_barrier(CLK_LOCAL_MEM_FENCE);
 		equal_index += equal_index_init;
+		work_group_barrier(CLK_LOCAL_MEM_FENCE);
 		
 		for (int i = (num_query * lid) / l_size; i != (num_query * (lid + 1)) / l_size; i++) {
-			if (query[i] < pivot) {
+			if (getKeyFromPacket(query[i]) < pivot) {
 				query_temp[less_index] = query[i];
 				result_addr_temp[less_index++] = result_addr[i];
 			} 
-			if (query[i] > pivot) {
+			if (getKeyFromPacket(query[i]) > pivot) {
 				query_temp[greater_index] = query[i];
 				result_addr_temp[greater_index++] = result_addr[i];
 			}
-			if (query[i] == pivot) {
+			if (getKeyFromPacket(query[i]) == pivot) {
 				query_temp[equal_index] = query[i];
 				result_addr_temp[equal_index++] = result_addr[i];
 			}
@@ -159,7 +161,6 @@ clbptPacketSort(
 			result_addr[i] = result_addr_temp[i];
 		}
 		if (gid == l_size - 1) {
-		
 			enqueue_kernel(
 				get_default_queue(),
 				CLK_ENQUEUE_FLAGS_NO_WAIT,
@@ -173,7 +174,7 @@ clbptPacketSort(
 				CLK_ENQUEUE_FLAGS_NO_WAIT,
 				ndrange_1D(l_size, l_size),
 				^{
-					clbptPacketSort(query + equal_index, result_addr + equal_index, query_temp + equal_index, result_addr_temp + equal_index, greater_index - equal_index);
+					clbptPacketSort(query + equal_index, result_addr + equal_index, query_temp + equal_index, result_addr_temp + equal_index, num_query - equal_index);
 				 }
 			);
 		}
