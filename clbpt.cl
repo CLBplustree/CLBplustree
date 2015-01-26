@@ -20,6 +20,15 @@ typedef struct _clbpt_leaf_node {
 typedef	ulong clbpt_packet;
 
 #define getKeyFromPacket(X) (int)(((X) >> 31) & 0x80000000 | ((X) >> 32) & 0x7FFFFFFF)
+#define PACKET_NOP (0x3FFFFFFF00000000L)
+#define isReadPacket(X) (!((uchar)((X) >> 63) & 0x1))
+#define isWritePacket(X) ((uchar)((X) >> 63) & 0x1)
+#define isNopPacket(X) ((X) == PACKET_NOP)
+#define isRangePacket(X) ((!((uchar)((X) >> 63) & 0x1)) && ((uchar)((X) >> 31) & 0x1))
+#define isSearchPacket(X) (!((uchar)((X) >> 63) & 0x1) && ((uint)(X) == 0x7FFFFFFF))
+#define isInsertPacket(X) (((uchar)((X) >> 63) & 0x1) && !((uint)(X) == 0))
+#define isDeletePacket(X) (((uchar)((X) >> 63) & 0x1) && ((uint)(X) == 0))
+#define getUpperKeyFromRangePacket(X) (int)(((X) << 1) & 0x80000000 | (X) & 0x7FFFFFFF)
 
 __kernel void
 clbptPacketSort(
@@ -111,6 +120,7 @@ clbptPacketSort(
 		}
 		
 		less_index = work_group_scan_exclusive_add(less_count);
+		equal_index = work_group_scan_exclusive_add(equal_count);
 		greater_index = work_group_scan_inclusive_add(greater_count);
 		if (gid == l_size - 1) {
 			equal_index_init = less_index + less_count;
@@ -118,7 +128,6 @@ clbptPacketSort(
 		work_group_barrier(CLK_LOCAL_MEM_FENCE);
 		greater_index = num_query - greater_index;
 		equal_index_init = work_group_broadcast(equal_index_init, l_size - 1);
-		equal_index = work_group_scan_exclusive_add(equal_count);
 		work_group_barrier(CLK_LOCAL_MEM_FENCE);
 		equal_index += equal_index_init;
 		work_group_barrier(CLK_LOCAL_MEM_FENCE);
@@ -161,23 +170,77 @@ clbptPacketSort(
 			result_addr[i] = result_addr_temp[i];
 		}
 		if (gid == l_size - 1) {
-			enqueue_kernel(
-				get_default_queue(),
-				CLK_ENQUEUE_FLAGS_NO_WAIT,
-				ndrange_1D(l_size, l_size),
-				^{
-					clbptPacketSort(query, result_addr, query_temp, result_addr_temp, less_index);
-				 }
-			);
-			enqueue_kernel(
-				get_default_queue(),
-				CLK_ENQUEUE_FLAGS_NO_WAIT,
-				ndrange_1D(l_size, l_size),
-				^{
-					clbptPacketSort(query + equal_index, result_addr + equal_index, query_temp + equal_index, result_addr_temp + equal_index, num_query - equal_index);
-				 }
-			);
+			if (less_index > 0) {
+				enqueue_kernel(
+					get_default_queue(),
+					CLK_ENQUEUE_FLAGS_NO_WAIT,
+					ndrange_1D(l_size, l_size),
+					^{
+						clbptPacketSort(query, result_addr, query_temp, result_addr_temp, less_index);
+					 }
+				);
+			}
+			if (num_query - equal_index > 0) {
+				enqueue_kernel(
+					get_default_queue(),
+					CLK_ENQUEUE_FLAGS_NO_WAIT,
+					ndrange_1D(l_size, l_size),
+					^{
+						clbptPacketSort(query + equal_index, result_addr + equal_index, query_temp + equal_index, result_addr_temp + equal_index, num_query - equal_index);
+					 }
+				);
+			}
 		}
 		
+	}
+}
+
+__kernel void
+clbptPacketSelect(
+	__global uchar *isOver,
+	__global clbpt_packet *execute,
+	__global clbpt_packet *query,
+	__const uint buffer_size
+)
+{
+	const uint gid = get_global_id(0);
+	
+	if (gid >= buffer_size) return;
+	
+	clbpt_packet pkt = execute[gid];
+	
+	if (isNopPacket(pkt)) {
+		query[gid] = PACKET_NOP;
+		return;
+	}
+	
+	uchar isRange = isRangePacket(pkt);
+	int key = getKeyFromPacket(pkt);
+	int ukey = getUpperKeyFromRangePacket(pkt);
+	clbpt_packet prev_pkt;
+	int i;
+	
+	*isOver = 0;
+	for (i = gid - 1; i >= 0; i--) {
+		if (isWritePacket(prev_pkt = execute[i])) {
+			int prev_key = getKeyFromPacket(prev_pkt);
+			if (isRange) {
+				if (prev_key >= key && prev_key <= ukey) {
+					break;
+				}
+			}
+			else {
+				if (prev_key == key) {
+					break;
+				}
+			}
+		}
+	}
+	if (i < 0) {
+		query[gid] = pkt;
+		execute[gid] = PACKET_NOP;
+	}
+	else {
+		query[gid] = PACKET_NOP;
 	}
 }
