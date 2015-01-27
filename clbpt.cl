@@ -204,6 +204,8 @@ clbptPacketSelect(
 	)
 {
 	const uint gid = get_global_id(0);
+	const uint grid = get_group_id(0);
+	const uint lsize = get_local_size(0);
 	
 	if (gid >= buffer_size) return;
 	
@@ -221,7 +223,23 @@ clbptPacketSelect(
 	int i;
 	
 	*isOver = 0;
-	for (i = gid - 1; i >= 0; i--) {
+	for (i = gid - 1; i >= grid * lsize; i--) {
+		if (isWritePacket(prev_pkt = execute[i])) {
+			int prev_key = getKeyFromPacket(prev_pkt);
+			if (isRange) {
+				if (prev_key >= key && prev_key <= ukey) {
+					break;
+				}
+			}
+			else {
+				if (prev_key == key) {
+					break;
+				}
+			}
+		}
+	}
+	work_group_barrier(0);
+	for (i = grid * lsize - 1; i >= 0; i--) {
 		if (isWritePacket(prev_pkt = execute[i])) {
 			int prev_key = getKeyFromPacket(prev_pkt);
 			if (isRange) {
@@ -244,3 +262,83 @@ clbptPacketSelect(
 		query[gid] = PACKET_NOP;
 	}
 }
+
+
+/*
+__kernel void
+clbptPacketSelect(
+	__global uchar *isOver,
+	__global clbpt_packet *execute,
+	__global clbpt_packet *select,
+	__const uint buffer_size
+)
+{
+	const uint lid = get_local_id(0);
+	const uint lsize = get_local_size(0);
+	clbpt_packet pkt;
+	int pkt_key;
+	uint i, j;
+	int isOver_private = 1;
+	
+	for (i = 0; i < buffer_size; i += lsize) {
+		if (i + lid < buffer_size) {
+			select[i + lid] = 1;
+		}
+	}
+	work_group_barrier(0);
+	for (i = 0; i < buffer_size; i += lsize) {
+		if (i + lid < buffer_size) {
+			pkt = execute[i + lid];
+			if (isNopPacket(pkt)) {
+				select[i + lid] = 0;
+			}
+			else if (isWritePacket(pkt)) {
+				pkt_key = getKeyFromPacket(pkt);
+				for (j = i + lid + 1; j < i + lsize; j++) {
+					clbpt_packet latter_pkt = execute[j];
+					if (isRangePacket(latter_pkt)) {
+						if (pkt_key >= getKeyFromPacket(latter_pkt) && pkt_key <= getUpperKeyFromRangePacket(latter_pkt)) {
+							select[j] = 0;
+						}
+					}
+					else {
+						if (pkt_key == getKeyFromPacket(latter_pkt)) {
+							select[j] = 0;
+						}
+					}
+				}
+				work_group_barrier(0);
+				for (j = i + lsize; j < buffer_size; j++) {
+					clbpt_packet latter_pkt = execute[j];
+					if (isRangePacket(latter_pkt)) {
+						if (pkt_key >= getKeyFromPacket(latter_pkt) && pkt_key <= getUpperKeyFromRangePacket(latter_pkt)) {
+							select[j] = 0;
+						}
+					}
+					else {
+						if (pkt_key == getKeyFromPacket(latter_pkt)) {
+							select[j] = 0;
+							if (isWritePacket(latter_pkt))
+								break;
+						}
+					}
+				}
+			}
+		}
+	}
+	work_group_barrier(CLK_GLOBAL_MEM_FENCE);
+	for (i = 0; i < buffer_size; i += lsize) {
+		if (i + lid < buffer_size) {
+			if (select[i + lid]) {
+				select[i + lid] = execute[i + lid];
+				execute[i + lid] = PACKET_NOP;
+				isOver_private = 0;
+			}
+			else {
+				select[i + lid] = PACKET_NOP;
+			}
+		}
+	}
+	work_group_barrier(0);
+	*isOver = (uchar)work_group_all(isOver_private);
+}*/
