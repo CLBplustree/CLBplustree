@@ -3,6 +3,8 @@
  */
  
 #include "clbpt.h"
+#include <stdlib.h>
+#include <string.h>
 
 #define CLBPT_PACKET_SEARCH(x) ((( (clbpt_packet)(x) << 32 ) & 0x7FFFFFFF00000000 ) | 0x7FFFFFFF )
 #define CLBPT_PACKET_RANGE(x,y) ((( (clbpt_packet)(x)  << 32 ) & 0xFFFFFFFF00000000 ) | ( (uint32_t)(y) | 0x80000000 ) )
@@ -12,14 +14,14 @@
 int clbptBufferExchange(clbpt_tree tree)
 {
     clbptWaitExcuteBufferEmpty(tree);
-    memcpy( execute_buf , fetch_buf , sizeof(clbpt_packet)*buf_size );
-    memset( fetch_buf , 0 , sizeof(clbpt_packet)*buf_size );
+    memcpy( tree->execute_buf , tree->fetch_buf , sizeof(clbpt_packet)*tree->buf_size );
+    memset( tree->fetch_buf , 0 , sizeof(clbpt_packet)*tree->buf_size );
     return CLBPT_SUCCESS;
 }
 
 int clbptEnqueueFecthBuffer(clbpt_tree tree, clbpt_packet packet, void *records)
 {
-    if( tree->fecth_buf_index >= tree->buf_size )
+    if( tree->fetch_buf_index >= tree->buf_size )
     {
         clbptBufferExchange(tree);
     }
@@ -36,12 +38,12 @@ int clbptCreatePlatform(clbpt_platform dst_platform, cl_context context)
 int clbptCreateTree(clbpt_tree dst_tree, clbpt_platform platform, const int degree, const size_t record_size)
 {
     dst_tree = malloc(sizeof(struct _clbpt_tree));
-    dst_tree->platform = plantform;
+    dst_tree->platform = platform;
     dst_tree->degree = degree;
     dst_tree->record_size = record_size;
     dst_tree->buf_size = buf_size;
-    dst_tree->fecth_buf = calloc(sizeof(clbpt_pakcet),buf_size);
-    dst_tree->execute_buf = calloc(sizeof(clbpt_pakcet),buf_size);
+    dst_tree->fetch_buf = calloc(sizeof(clbpt_packet),buf_size);
+    dst_tree->execute_buf = calloc(sizeof(clbpt_packet),buf_size);
     dst_tree->result_buf = calloc(sizeof(void *),buf_size);
 }
 
@@ -70,9 +72,9 @@ int clbptEnqueueRangeSearches(clbpt_tree tree, int num_keys, CLBPT_KEY_TYPE *l_k
 int clbptEnqueueInsertions(clbpt_tree tree, int num_inserts, CLBPT_KEY_TYPE *keys, void *records)
 {
 	int i, err;
-	for( i = 0 ; i < num_keys ; i++ )
+	for( i = 0 ; i < num_inserts ; i++ )
 	{
-		err = clEnqueueFetchBuffer(tree, CLBPT_PACKET_SEARCH(keys[i],records),NULL);
+		err = clEnqueueFetchBuffer(tree, CLBPT_PACKET_INSERT(keys[i],(uint32_t)records),NULL);
         if( err != CLBPT_SUCCESS ) return err;
 	}
     return CLBPT_SUCCESS;
@@ -81,7 +83,7 @@ int clbptEnqueueInsertions(clbpt_tree tree, int num_inserts, CLBPT_KEY_TYPE *key
 int clbptEnqueueDeletions(clbpt_tree tree, int num_deletes, CLBPT_KEY_TYPE *keys)
 {
 	int i, err;
-	for( i = 0 ; i < num_keys ; i++ )
+	for( i = 0 ; i < num_deletes ; i++ )
 	{
 		err = clEnqueueFetchBuffer(tree, CLBPT_PACKET_DELETE(keys[i]),NULL);
         if( err != CLBPT_SUCCESS ) return err;
