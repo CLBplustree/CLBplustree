@@ -43,9 +43,11 @@ struct _clbpt_tree {
 	clbpt_platform platform;
 	pthread_t *handler;
 	
+    int fetch_buf_index;
 	size_t buf_size;
 	clbpt_packet *fetch_buf;
 	clbpt_packet *execute_buf;
+	void **result_buf;
 	
 	int degree;
 	size_t record_size;

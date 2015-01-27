@@ -7,6 +7,9 @@
 	
 #include "clbpt_type.h"
 
+#define CLBPT_SUCCESS 0
+#define CLBPT_UNKNOWN_ERROR 5566
+
 /**
  * @brief Create a new CLBPT platform.
  * @param dst_platform The platform.
