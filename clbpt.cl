@@ -201,7 +201,7 @@ clbptPacketSelect(
 	__global clbpt_packet *execute,
 	__global clbpt_packet *query,
 	__const uint buffer_size
-)
+	)
 {
 	const uint gid = get_global_id(0);
 	
