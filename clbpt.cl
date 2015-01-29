@@ -25,8 +25,8 @@ typedef	ulong clbpt_packet;
 #define isWritePacket(X) ((uchar)((X) >> 63) & 0x1)
 #define isNopPacket(X) ((X) == PACKET_NOP)
 #define isRangePacket(X) ((!((uchar)((X) >> 63) & 0x1)) && ((uchar)((X) >> 31) & 0x1))
-#define isSearchPacket(X) (!((uchar)((X) >> 63) & 0x1) && ((uint)(X) == 0x7FFFFFFF))
-#define isInsertPacket(X) (((uchar)((X) >> 63) & 0x1) && !((uint)(X) == 0))
+#define isSearchPacket(X) ((!((uchar)((X) >> 63) & 0x1)) && ((uint)(X) == 0x7FFFFFFF))
+#define isInsertPacket(X) (((uchar)((X) >> 63) & 0x1) && ((uint)(X) != 0))
 #define isDeletePacket(X) (((uchar)((X) >> 63) & 0x1) && ((uint)(X) == 0))
 #define getUpperKeyFromRangePacket(X) (int)(((X) << 1) & 0x80000000 | (X) & 0x7FFFFFFF)
 
@@ -191,7 +191,6 @@ clbptPacketSort(
 				);
 			}
 		}
-		
 	}
 }
 
