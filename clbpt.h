@@ -8,6 +8,10 @@
 #include "clbpt_type.h"
 
 #define CLBPT_SUCCESS 0
+
+#define CLBPT_STATUS_DONE 0
+#define CLBPT_STATUS_WAIT 1
+
 #define CLBPT_UNKNOWN_ERROR 5566
 
 /**
