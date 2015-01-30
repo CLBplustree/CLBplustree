@@ -238,17 +238,19 @@ clbptPacketSelect(
 		}
 	}
 	work_group_barrier(0);
-	for (i = grid * lsize - 1; i >= 0; i--) {
-		if (isWritePacket(prev_pkt = execute[i])) {
-			int prev_key = getKeyFromPacket(prev_pkt);
-			if (isRange) {
-				if (prev_key >= key && prev_key <= ukey) {
-					break;
+	if (i == grid * lsize - 1) {
+		for (; i >= 0; i--) {
+			if (isWritePacket(prev_pkt = execute[i])) {
+				int prev_key = getKeyFromPacket(prev_pkt);
+				if (isRange) {
+					if (prev_key >= key && prev_key <= ukey) {
+						break;
+					}
 				}
-			}
-			else {
-				if (prev_key == key) {
-					break;
+				else {
+					if (prev_key == key) {
+						break;
+					}
 				}
 			}
 		}
