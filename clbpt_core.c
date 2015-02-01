@@ -63,7 +63,7 @@ void _clbptSelectFromWaitBuffer(clbpt_tree tree)
 	assert(err == 0);
 	if (isOver)
 	{
-		tree->buf_status = CLBPT_STATUS_DONE
+		tree->buf_status = CLBPT_STATUS_DONE;
 		return isOver;
 	}
 
