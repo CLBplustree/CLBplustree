@@ -4,7 +4,7 @@
 
 #include "kma.cl"
 
-// Temporary. Replace this by compiler option latter.
+// Temporary. Replace this by compiler option later.
 #define CLBPT_ORDER 8
 #define CPU_BITNESS 64
 
@@ -27,6 +27,13 @@ typedef struct _clbpt_int_node {
 
 typedef	ulong clbpt_packet;
 
+typedef struct _clbpt_insert_write_packet {
+	uint key;
+	uintptr_t new_addr;
+} clbpt_insert_write_packet;
+
+typedef uint clbpt_delete_write_packet;
+
 #define getKeyFromPacket(X) (int)(((X) >> 31) & 0x80000000 | ((X) >> 32) & 0x7FFFFFFF)
 #define PACKET_NOP (0x3FFFFFFF00000000L)
 #define isReadPacket(X) (!((uchar)((X) >> 63) & 0x1))
@@ -39,6 +46,15 @@ typedef	ulong clbpt_packet;
 #define getUpperKeyFromRangePacket(X) (int)(((X) << 1) & 0x80000000 | (X) & 0x7FFFFFFF)
 #define getKeyFromEntry(X) (int)(((X.key) << 1) & 0x80000000 | (X.key) & 0x7FFFFFFF)
 #define getChildFromEntry(X) (X.child)
+#define initInsertWritePacket(X) ((X).key = 0)
+#define isValidInsertWritePacket(X) (uchar)((X).key >> 31)
+#define setInsertWritePacket(tar, key, addr) (tar.key = (0x80000000 | key & 0x7FFFFFFF), tar.new_addr = addr)
+#define getKeyFromInsertWritePacket(X) (int)(((X).key << 1) & 0x80000000 | (X).key & 0x7FFFFFFF)
+#define getAddrFromInsertWritePacket(X) ((X).new_addr)
+#define initDeleteWritePacket(X) ((X) = 0)
+#define isValidDeleteWritePacket(X) (uchar)((X) >> 31)
+#define setDeleteWritePacket(tar, key) (tar = (0x80000000 | key & 0x7FFFFFFF))
+#define getKeyFromDeleteWritePacket(X) (int)(((X) >> 31) & 0x80000000 | ((X) >> 32) & 0x7FFFFFFF)
 
 __kernel void
 clbptPacketSort(
@@ -403,4 +419,22 @@ _clbptSearch(
 	result[gid] = *((cpu_address_t *)node);
 }
 	
+__kernel void
+_clbptInitInsertWritePacketBuffer(
+	__global clbpt_insert_write_packet *insert,
+	__global cpu_address_t *leaf_addr,
+	uint num_insert,
+	__global struct clheap *heap
+	)
+{
+	uint gid = get_global_id(0);
+	int key;
+	cpu_address_t *addr;
 	
+	if (gid >= num_insert) return;
+	key = getKeyFromInsertWritePacket(insert[gid]);
+	addr = (cpu_address_t *)malloc(heap, sizeof(cpu_address_t));
+	*addr = *leaf_addr;
+	setInsertWritePacket(insert[gid], key, (uintptr_t)addr);
+}
+
