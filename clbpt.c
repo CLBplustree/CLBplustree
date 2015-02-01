@@ -24,8 +24,11 @@ int clbptBufferExchange(clbpt_tree tree)
 {
     int err = clbptWaitExcuteBufferEmpty(tree);
     if( err != CLBPT_SUCCESS ) return err;
-    memcpy( tree->execute_buf , tree->fetch_buf , sizeof(clbpt_packet)*tree->buf_size );
-    memset( tree->fetch_buf , 0 , sizeof(clbpt_packet)*tree->buf_size );
+    clbpt_packet *fetch_buf_temp = tree->fetch_buf;
+    tree->fetch_buf = tree->execute_buf;
+    tree->execute_buf = fetch_buf_temp;
+    //memcpy( tree->execute_buf , tree->fetch_buf , sizeof(clbpt_packet)*tree->buf_size );
+    //memset( tree->fetch_buf , 0 , sizeof(clbpt_packet)*tree->buf_size );
     tree->buf_status = CLBPT_STATUS_WAIT;
     return CLBPT_SUCCESS;
 }

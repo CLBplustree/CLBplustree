@@ -16,6 +16,7 @@ struct _clbpt_platform {
 	cl_context context;
 	cl_command_queue queue;
 	cl_program program;
+	cl_kernel *kernels;
 };
 	
 typedef uint64_t clbpt_entry;
