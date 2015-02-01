@@ -80,7 +80,7 @@ int clbptEnqueueSearches(clbpt_tree tree, int num_keys, CLBPT_KEY_TYPE *keys, vo
 	int i, err;
 	for( i = 0 ; i < num_keys ; i++ )
 	{
-		err = clEnqueueFetchBuffer(tree, CLBPT_PACKET_SEARCH(keys[i]), records);
+		err = clbptEnqueueFecthBuffer(tree, CLBPT_PACKET_SEARCH(keys[i]), records);
         if( err != CLBPT_SUCCESS ) return err;
 	}
     return CLBPT_SUCCESS;
@@ -91,7 +91,7 @@ int clbptEnqueueRangeSearches(clbpt_tree tree, int num_keys, CLBPT_KEY_TYPE *l_k
 	int i, err;
 	for( i = 0 ; i < num_keys ; i++ )
 	{
-		err = clEnqueueFetchBuffer(tree, CLBPT_PACKET_RANGE(l_keys[i],u_keys[i]), (void *)record_list);
+		err = clbptEnqueueFecthBuffer(tree, CLBPT_PACKET_RANGE(l_keys[i],u_keys[i]), (void *)record_list);
         if( err != CLBPT_SUCCESS ) return err;
 	}
     return CLBPT_SUCCESS;
@@ -102,7 +102,7 @@ int clbptEnqueueInsertions(clbpt_tree tree, int num_inserts, CLBPT_KEY_TYPE *key
 	int i, err;
 	for( i = 0 ; i < num_inserts ; i++ )
 	{
-		err = clEnqueueFetchBuffer(tree, CLBPT_PACKET_INSERT(keys[i],0),records);
+		err = clbptEnqueueFecthBuffer(tree, CLBPT_PACKET_INSERT(keys[i],0), records);
         if( err != CLBPT_SUCCESS ) return err;
 	}
     return CLBPT_SUCCESS;
@@ -113,7 +113,7 @@ int clbptEnqueueDeletions(clbpt_tree tree, int num_deletes, CLBPT_KEY_TYPE *keys
 	int i, err;
 	for( i = 0 ; i < num_deletes ; i++ )
 	{
-		err = clEnqueueFetchBuffer(tree, CLBPT_PACKET_DELETE(keys[i]),NULL);
+		err = clbptEnqueueFecthBuffer(tree, CLBPT_PACKET_DELETE(keys[i]), NULL);
         if( err != CLBPT_SUCCESS ) return err;
 	}
     return CLBPT_SUCCESS;
