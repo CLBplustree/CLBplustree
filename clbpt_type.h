@@ -21,10 +21,12 @@ struct _clbpt_platform {
 	
 typedef uint64_t clbpt_entry;
  
-typedef struct _clbpt_node {
+/*
+typedef struct _clbpt_int_node {
 	clbpt_entry *entry;
 	uint32_t num_entry;
 } clbpt_node;
+*/
 
 typedef struct _clbpt_leaf_node {
 	struct _entry {
