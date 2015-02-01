@@ -1,21 +1,29 @@
-//#include "kma.cl"
+/*
+	Issues:		1. Packet select: isOver
+*/
 
-typedef ulong clbpt_entry;
+#include "kma.cl"
+
+// Temporary. Replace this by compiler option latter.
+#define CLBPT_ORDER 8
+#define CPU_BITNESS 64
+
+#if CPU_BITNESS == 32
+typedef uint cpu_address_t;
+#else
+typedef ulong cpu_address_t;
+#endif
+
+typedef struct _clbpt_entry {
+	uint key;
+	uintptr_t child;
+} clbpt_entry;
  
-typedef struct _clbpt_node {
-	clbpt_entry *entry;
+typedef struct _clbpt_int_node {
+	clbpt_entry entry[CLBPT_ORDER];
 	uint num_entry;
-} clbpt_node;
-
-typedef struct _clbpt_leaf_node {
-	struct _entry {
-		uchar enable;
-		void *record_ptr;
-		struct _entry *next;
-	} *entry;
-	struct _entry *head;
-	uint num_entry;
-} clbpt_leaf_node;
+	uintptr_t parent;
+} clbpt_int_node;
 
 typedef	ulong clbpt_packet;
 
@@ -29,50 +37,52 @@ typedef	ulong clbpt_packet;
 #define isInsertPacket(X) (((uchar)((X) >> 63) & 0x1) && ((uint)(X) != 0))
 #define isDeletePacket(X) (((uchar)((X) >> 63) & 0x1) && ((uint)(X) == 0))
 #define getUpperKeyFromRangePacket(X) (int)(((X) << 1) & 0x80000000 | (X) & 0x7FFFFFFF)
+#define getKeyFromEntry(X) (int)(((X.key) << 1) & 0x80000000 | (X.key) & 0x7FFFFFFF)
+#define getChildFromEntry(X) (X.child)
 
 __kernel void
 clbptPacketSort(
-			__global clbpt_packet *query,
-			__global ulong *result_addr,
-			__global clbpt_packet *query_temp,
-			__global ulong *result_addr_temp,
-			uint num_query
+			__global clbpt_packet *execute,
+			__global cpu_address_t *result_addr,
+			__global clbpt_packet *execute_temp,
+			__global cpu_address_t *result_addr_temp,
+			uint num_execute
 			)
 {
 	
 	const size_t gid = get_global_id(0);
 	const size_t lid = get_local_id(0);
 	const size_t l_size = get_local_size(0);
-	//__local clbpt_packet query_local[MAX_LOCAL_SIZE];
-	//__local ulong result_addr_local[MAX_LOCAL_SIZE];
+	//__local clbpt_packet execute_local[MAX_LOCAL_SIZE];
+	//__local cpu_address_t result_addr_local[MAX_LOCAL_SIZE];
 	event_t copy_event[2];
 	uint less_count = 0, greater_count = 0, equal_count = 0;
 	uint less_index, greater_index, equal_index;
 	uint equal_index_init;
 	
-	if (num_query < l_size) {	// Bitonic Sort
+	if (num_execute < l_size) {	// Bitonic Sort
 		uint bitonic_max_level, offset, local_offset;
 		size_t exchg_index;
 		clbpt_packet temp1, temp2;
-		ulong temp_addr;
+		cpu_address_t temp_addr;
 		
 		/*
 		// Copy to local
-		copy_event[0] = async_work_group_copy(query_local, query, num_query, 0);
-		copy_event[1] = async_work_group_copy(result_addr_local, result_addr, num_query, 0);
+		copy_event[0] = async_work_group_copy(execute_local, execute, num_execute, 0);
+		copy_event[1] = async_work_group_copy(result_addr_local, result_addr, num_execute, 0);
 		wait_group_events(2, copy_event);
 		*/
 		
 		// Sort
-		for (bitonic_max_level = 1; bitonic_max_level < num_query; bitonic_max_level <<= 1) {
+		for (bitonic_max_level = 1; bitonic_max_level < num_execute; bitonic_max_level <<= 1) {
 			if ((local_offset = gid & ((bitonic_max_level << 1) - 1)) < bitonic_max_level) {
 			
-				if (getKeyFromPacket(temp1 = query[gid]) > 
-					getKeyFromPacket(temp2 = query[exchg_index = gid + ((bitonic_max_level - local_offset) << 1) - 1]) &&
-					exchg_index < num_query) 
+				if (getKeyFromPacket(temp1 = execute[gid]) > 
+					getKeyFromPacket(temp2 = execute[exchg_index = gid + ((bitonic_max_level - local_offset) << 1) - 1]) &&
+					exchg_index < num_execute) 
 				{
-					query[gid] = temp2;
-					query[exchg_index] = temp1;
+					execute[gid] = temp2;
+					execute[exchg_index] = temp1;
 					temp_addr = result_addr[gid];
 					result_addr[gid] = result_addr[exchg_index];
 					result_addr[exchg_index] = temp_addr;
@@ -81,11 +91,11 @@ clbptPacketSort(
 			work_group_barrier(CLK_LOCAL_MEM_FENCE);
 			for (offset = (bitonic_max_level >> 1); offset != 0; offset >>= 1) {
 				if ((gid & ((offset << 1) - 1)) < offset) {
-					if (getKeyFromPacket(temp1 = query[gid]) > getKeyFromPacket(temp2 = query[exchg_index = gid + offset]) &&
-						exchg_index < num_query)
+					if (getKeyFromPacket(temp1 = execute[gid]) > getKeyFromPacket(temp2 = execute[exchg_index = gid + offset]) &&
+						exchg_index < num_execute)
 					{
-						query[gid] = temp2;
-						query[exchg_index] = temp1;
+						execute[gid] = temp2;
+						execute[exchg_index] = temp1;
 						temp_addr = result_addr[gid];
 						result_addr[gid] = result_addr[exchg_index];
 						result_addr[exchg_index] = temp_addr;
@@ -97,24 +107,24 @@ clbptPacketSort(
 		
 		/*
 		// Copy to global
-		copy_event[0] = async_work_group_copy(query, query_local, num_query, 0);
-		copy_event[1] = async_work_group_copy(result_addr, result_addr_local, num_query, 0);
+		copy_event[0] = async_work_group_copy(execute, execute_local, num_execute, 0);
+		copy_event[1] = async_work_group_copy(result_addr, result_addr_local, num_execute, 0);
 		wait_group_events(2, copy_event);
 		*/
 		
 	}
 	else {							// Quick Sort Partition
 	
-		const int pivot = getKeyFromPacket(query[num_query >> 1]);
+		const int pivot = getKeyFromPacket(execute[num_execute >> 1]);
 		
-		for (int i = (num_query * lid) / l_size; i != (num_query * (lid + 1)) / l_size; i++) {
-			if (getKeyFromPacket(query[i]) < pivot) {
+		for (int i = (num_execute * lid) / l_size; i != (num_execute * (lid + 1)) / l_size; i++) {
+			if (getKeyFromPacket(execute[i]) < pivot) {
 				less_count++;
 			} 
-			if (getKeyFromPacket(query[i]) > pivot) {
+			if (getKeyFromPacket(execute[i]) > pivot) {
 				greater_count++;
 			}
-			if (getKeyFromPacket(query[i]) == pivot) {
+			if (getKeyFromPacket(execute[i]) == pivot) {
 				equal_count++;
 			}
 		}
@@ -126,47 +136,47 @@ clbptPacketSort(
 			equal_index_init = less_index + less_count;
 		}
 		work_group_barrier(CLK_LOCAL_MEM_FENCE);
-		greater_index = num_query - greater_index;
+		greater_index = num_execute - greater_index;
 		equal_index_init = work_group_broadcast(equal_index_init, l_size - 1);
 		work_group_barrier(CLK_LOCAL_MEM_FENCE);
 		equal_index += equal_index_init;
 		work_group_barrier(CLK_LOCAL_MEM_FENCE);
 		
-		for (int i = (num_query * lid) / l_size; i != (num_query * (lid + 1)) / l_size; i++) {
-			if (getKeyFromPacket(query[i]) < pivot) {
-				query_temp[less_index] = query[i];
+		for (int i = (num_execute * lid) / l_size; i != (num_execute * (lid + 1)) / l_size; i++) {
+			if (getKeyFromPacket(execute[i]) < pivot) {
+				execute_temp[less_index] = execute[i];
 				result_addr_temp[less_index++] = result_addr[i];
 			} 
-			if (getKeyFromPacket(query[i]) > pivot) {
-				query_temp[greater_index] = query[i];
+			if (getKeyFromPacket(execute[i]) > pivot) {
+				execute_temp[greater_index] = execute[i];
 				result_addr_temp[greater_index++] = result_addr[i];
 			}
-			if (getKeyFromPacket(query[i]) == pivot) {
-				query_temp[equal_index] = query[i];
+			if (getKeyFromPacket(execute[i]) == pivot) {
+				execute_temp[equal_index] = execute[i];
 				result_addr_temp[equal_index++] = result_addr[i];
 			}
 		}
 		work_group_barrier(CLK_LOCAL_MEM_FENCE);
 		
 		/*
-		for (int i = 0; i <= num_query - MAX_LOCAL_SIZE; i += MAX_LOCAL_SIZE) {
-			copy_event[0] = async_work_group_copy(query_local, query_temp, MAX_LOCAL_SIZE, 0);
+		for (int i = 0; i <= num_execute - MAX_LOCAL_SIZE; i += MAX_LOCAL_SIZE) {
+			copy_event[0] = async_work_group_copy(execute_local, execute_temp, MAX_LOCAL_SIZE, 0);
 			copy_event[1] = async_work_group_copy(result_addr_local, result_addr_temp, MAX_LOCAL_SIZE, 0);
 			wait_group_events(2, copy_event);
-			copy_event[0] = async_work_group_copy(query, query_local, MAX_LOCAL_SIZE, 0);
+			copy_event[0] = async_work_group_copy(execute, execute_local, MAX_LOCAL_SIZE, 0);
 			copy_event[1] = async_work_group_copy(result_addr, result_addr_local, MAX_LOCAL_SIZE, 0);
 			wait_group_events(2, copy_event);
 		}
-		copy_event[0] = async_work_group_copy(query_local, query_temp, num_query % MAX_LOCAL_SIZE, 0);
-		copy_event[1] = async_work_group_copy(result_addr_local, result_addr_temp, num_query % MAX_LOCAL_SIZE, 0);
+		copy_event[0] = async_work_group_copy(execute_local, execute_temp, num_execute % MAX_LOCAL_SIZE, 0);
+		copy_event[1] = async_work_group_copy(result_addr_local, result_addr_temp, num_execute % MAX_LOCAL_SIZE, 0);
 		wait_group_events(2, copy_event);
-		copy_event[0] = async_work_group_copy(query, query_local, num_query % MAX_LOCAL_SIZE, 0);
-		copy_event[1] = async_work_group_copy(result_addr, result_addr_local, num_query % MAX_LOCAL_SIZE, 0);
+		copy_event[0] = async_work_group_copy(execute, execute_local, num_execute % MAX_LOCAL_SIZE, 0);
+		copy_event[1] = async_work_group_copy(result_addr, result_addr_local, num_execute % MAX_LOCAL_SIZE, 0);
 		wait_group_events(2, copy_event);
 		*/
 		
-		for (int i = (num_query * lid) / l_size; i != (num_query * (lid + 1)) / l_size; i++) {
-			query[i] = query_temp[i];
+		for (int i = (num_execute * lid) / l_size; i != (num_execute * (lid + 1)) / l_size; i++) {
+			execute[i] = execute_temp[i];
 			result_addr[i] = result_addr_temp[i];
 		}
 		if (gid == l_size - 1) {
@@ -176,17 +186,17 @@ clbptPacketSort(
 					CLK_ENQUEUE_FLAGS_NO_WAIT,
 					ndrange_1D(l_size, l_size),
 					^{
-						clbptPacketSort(query, result_addr, query_temp, result_addr_temp, less_index);
+						clbptPacketSort(execute, result_addr, execute_temp, result_addr_temp, less_index);
 					 }
 				);
 			}
-			if (num_query - equal_index > 0) {
+			if (num_execute - equal_index > 0) {
 				enqueue_kernel(
 					get_default_queue(),
 					CLK_ENQUEUE_FLAGS_NO_WAIT,
 					ndrange_1D(l_size, l_size),
 					^{
-						clbptPacketSort(query + equal_index, result_addr + equal_index, query_temp + equal_index, result_addr_temp + equal_index, num_query - equal_index);
+						clbptPacketSort(execute + equal_index, result_addr + equal_index, execute_temp + equal_index, result_addr_temp + equal_index, num_execute - equal_index);
 					 }
 				);
 			}
@@ -197,8 +207,8 @@ clbptPacketSort(
 __kernel void
 clbptPacketSelect(
 	__global uchar *isOver,
+	__global clbpt_packet *wait,
 	__global clbpt_packet *execute,
-	__global clbpt_packet *query,
 	__const uint buffer_size
 	)
 {
@@ -208,10 +218,10 @@ clbptPacketSelect(
 	
 	if (gid >= buffer_size) return;
 	
-	clbpt_packet pkt = execute[gid];
+	clbpt_packet pkt = wait[gid];
 	
 	if (isNopPacket(pkt)) {
-		query[gid] = PACKET_NOP;
+		execute[gid] = PACKET_NOP;
 		return;
 	}
 	
@@ -223,7 +233,7 @@ clbptPacketSelect(
 	
 	*isOver = 0;
 	for (i = gid - 1; i >= grid * lsize; i--) {
-		if (isWritePacket(prev_pkt = execute[i])) {
+		if (isWritePacket(prev_pkt = wait[i])) {
 			int prev_key = getKeyFromPacket(prev_pkt);
 			if (isRange) {
 				if (prev_key >= key && prev_key <= ukey) {
@@ -240,7 +250,7 @@ clbptPacketSelect(
 	work_group_barrier(0);
 	if (i == grid * lsize - 1) {
 		for (; i >= 0; i--) {
-			if (isWritePacket(prev_pkt = execute[i])) {
+			if (isWritePacket(prev_pkt = wait[i])) {
 				int prev_key = getKeyFromPacket(prev_pkt);
 				if (isRange) {
 					if (prev_key >= key && prev_key <= ukey) {
@@ -256,11 +266,11 @@ clbptPacketSelect(
 		}
 	}
 	if (i < 0) {
-		query[gid] = pkt;
-		execute[gid] = PACKET_NOP;
+		execute[gid] = pkt;
+		wait[gid] = PACKET_NOP;
 	}
 	else {
-		query[gid] = PACKET_NOP;
+		execute[gid] = PACKET_NOP;
 	}
 }
 
@@ -269,7 +279,7 @@ clbptPacketSelect(
 __kernel void
 clbptPacketSelect(
 	__global uchar *isOver,
-	__global clbpt_packet *execute,
+	__global clbpt_packet *wait,
 	__global clbpt_packet *select,
 	__const uint buffer_size
 )
@@ -289,14 +299,14 @@ clbptPacketSelect(
 	work_group_barrier(0);
 	for (i = 0; i < buffer_size; i += lsize) {
 		if (i + lid < buffer_size) {
-			pkt = execute[i + lid];
+			pkt = wait[i + lid];
 			if (isNopPacket(pkt)) {
 				select[i + lid] = 0;
 			}
 			else if (isWritePacket(pkt)) {
 				pkt_key = getKeyFromPacket(pkt);
 				for (j = i + lid + 1; j < i + lsize; j++) {
-					clbpt_packet latter_pkt = execute[j];
+					clbpt_packet latter_pkt = wait[j];
 					if (isRangePacket(latter_pkt)) {
 						if (pkt_key >= getKeyFromPacket(latter_pkt) && pkt_key <= getUpperKeyFromRangePacket(latter_pkt)) {
 							select[j] = 0;
@@ -310,7 +320,7 @@ clbptPacketSelect(
 				}
 				work_group_barrier(0);
 				for (j = i + lsize; j < buffer_size; j++) {
-					clbpt_packet latter_pkt = execute[j];
+					clbpt_packet latter_pkt = wait[j];
 					if (isRangePacket(latter_pkt)) {
 						if (pkt_key >= getKeyFromPacket(latter_pkt) && pkt_key <= getUpperKeyFromRangePacket(latter_pkt)) {
 							select[j] = 0;
@@ -331,8 +341,8 @@ clbptPacketSelect(
 	for (i = 0; i < buffer_size; i += lsize) {
 		if (i + lid < buffer_size) {
 			if (select[i + lid]) {
-				select[i + lid] = execute[i + lid];
-				execute[i + lid] = PACKET_NOP;
+				select[i + lid] = wait[i + lid];
+				wait[i + lid] = PACKET_NOP;
 				isOver_private = 0;
 			}
 			else {
@@ -343,3 +353,54 @@ clbptPacketSelect(
 	work_group_barrier(0);
 	*isOver = (uchar)work_group_all(isOver_private);
 }*/
+
+__kernel void
+_clbptInitialize (
+	__global uint *level
+)
+{
+	*level = 1;
+}
+
+__kernel void
+_clbptSearch(
+	__global cpu_address_t *result,
+	__global uintptr_t *root_node,
+	__global uint *level,
+	__global clbpt_packet *execute,
+	uint buffer_size)
+{
+	uint gid = get_global_id(0);
+	int key;
+	uint index_entry_high, index_entry_low, index_entry_mid;
+	clbpt_int_node *node;
+	
+	if (gid >= buffer_size) return;
+	if (*level == 1) {
+		result[gid] = 0;	// Root node at host side
+		return;
+	}
+	
+	key = getKeyFromPacket(execute[gid]);
+	node = (clbpt_int_node *)(*root_node);
+	for (int i = 0; i < *level - 1; i++) {
+		index_entry_low = 0;
+		index_entry_high = node->num_entry;
+		for (;;) {
+			index_entry_mid = (index_entry_low + index_entry_high) / 2;
+			if (key < getKeyFromEntry(node->entry[index_entry_mid])) {
+				index_entry_high = index_entry_mid - 1;
+			}
+			else if (key >= getKeyFromEntry(node->entry[index_entry_mid + 1])) {
+				index_entry_low = index_entry_mid + 1;
+			}
+			else {
+				break;
+			}
+		}
+		node = (clbpt_int_node *)getChildFromEntry(node->entry[index_entry_mid]);
+	}
+	result[gid] = *((cpu_address_t *)node);
+}
+	
+	
