@@ -371,9 +371,9 @@ clbptPacketSelect(
 }*/
 
 __kernel void
-_clbptInitialize (
+_clbptInitialize(
 	__global uint *level
-)
+	)
 {
 	*level = 1;
 }
@@ -384,7 +384,8 @@ _clbptSearch(
 	__global uintptr_t *root_node,
 	__global uint *level,
 	__global clbpt_packet *execute,
-	uint buffer_size)
+	uint buffer_size
+	)
 {
 	uint gid = get_global_id(0);
 	int key;

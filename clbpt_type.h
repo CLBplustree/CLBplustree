@@ -12,6 +12,9 @@
 
 #define CLBPT_KEY_TYPE int
 
+#define CLBPT_STATUS_DONE 0
+#define CLBPT_STATUS_WAIT 1
+
 struct _clbpt_platform {
 	cl_context context;
 	cl_command_queue queue;

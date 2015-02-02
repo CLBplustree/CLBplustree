@@ -6,7 +6,7 @@
 #define __CLBPT_CORE_H_INCLUDED
 
 /**
- * @brief Select and sort executable from wating buffer.
+ * @brief Select and sort from wating buffer.
  * @param tree.
  * @return Is the waiting buffer empty or not.
  */
