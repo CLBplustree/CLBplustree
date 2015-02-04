@@ -77,6 +77,7 @@ int clbptCreateTree(clbpt_tree dst_tree, clbpt_platform platform, const int degr
     dst_tree->execute_buf = calloc(sizeof(clbpt_packet),buf_size);
     dst_tree->result_buf = calloc(sizeof(void *),buf_size);
     dst_tree->execute_result_buf = calloc(sizeof(void *),buf_size);
+    
     if( (err = pthread_mutex_init(&(dst_tree->mutex),NULL)) != 0)
     {
         return err;
