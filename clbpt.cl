@@ -23,16 +23,16 @@ typedef struct _clbpt_int_node {
 	clbpt_entry entry[CLBPT_ORDER];
 	uint num_entry;
 	uintptr_t parent;
+	uint parent_key;
 } clbpt_int_node;
 
 typedef	ulong clbpt_packet;
 
-typedef struct _clbpt_insert_write_packet {
+typedef struct _clbpt_wpacket {
+	uintptr_t target;		// 0 for nop w_packet
 	uint key;
-	uintptr_t new_addr;
-} clbpt_insert_write_packet;
-
-typedef uint clbpt_delete_write_packet;
+	uintptr_t new_addr;		// 0 for delete w_packet
+} clbpt_wpacket;
 
 #define getKeyFromPacket(X) (int)(((X) >> 31) & 0x80000000 | ((X) >> 32) & 0x7FFFFFFF)
 #define PACKET_NOP (0x3FFFFFFF00000000L)
@@ -44,17 +44,21 @@ typedef uint clbpt_delete_write_packet;
 #define isInsertPacket(X) (((uchar)((X) >> 63) & 0x1) && ((uint)(X) != 0))
 #define isDeletePacket(X) (((uchar)((X) >> 63) & 0x1) && ((uint)(X) == 0))
 #define getUpperKeyFromRangePacket(X) (int)(((X) << 1) & 0x80000000 | (X) & 0x7FFFFFFF)
+
 #define getKeyFromEntry(X) (int)(((X.key) << 1) & 0x80000000 | (X.key) & 0x7FFFFFFF)
 #define getChildFromEntry(X) (X.child)
-#define initInsertWritePacket(X) ((X).key = 0)
-#define isValidInsertWritePacket(X) (uchar)((X).key >> 31)
-#define setInsertWritePacket(tar, key, addr) (tar.key = (0x80000000 | key & 0x7FFFFFFF), tar.new_addr = addr)
-#define getKeyFromInsertWritePacket(X) (int)(((X).key << 1) & 0x80000000 | (X).key & 0x7FFFFFFF)
-#define getAddrFromInsertWritePacket(X) ((X).new_addr)
-#define initDeleteWritePacket(X) ((X) = 0)
-#define isValidDeleteWritePacket(X) (uchar)((X) >> 31)
-#define setDeleteWritePacket(tar, key) (tar = (0x80000000 | key & 0x7FFFFFFF))
-#define getKeyFromDeleteWritePacket(X) (int)(((X) >> 31) & 0x80000000 | ((X) >> 32) & 0x7FFFFFFF)
+#define ENTRY_NULL ((clbpt_entry){.child = 0})
+#define isNullEntry(X) ((X).child == 0)
+
+#define getParentKeyFromNode(X) (int)((((X).parent_key) << 1) & 0x80000000 | ((X).parent_key) & 0x7FFFFFFF)
+
+#define initDeleteWPacket(X) ((X).new_addr = 0)
+#define initInsertWPacket(X, ADDR) ((X).new_addr = ADDR)
+#define WPACKET_NOP ((clbpt_wpacket){.target = 0})
+#define isInsertWPacket(X) ((X).new_addr != 0)
+#define isDeleteWPacket(X) ((X).new_addr == 0)
+#define isNopWPacket(X) ((X).target == 0)
+#define getKeyFromWPacket(X) (int)(((X) << 1) & 0x80000000 | (X) & 0x7FFFFFFF)
 
 __kernel void
 clbptPacketSort(
@@ -402,7 +406,7 @@ _clbptSearch(
 	node = (clbpt_int_node *)(*root_node);
 	for (int i = 0; i < *level - 1; i++) {
 		index_entry_low = 0;
-		index_entry_high = node->num_entry;
+		index_entry_high = node->num_entry - 1;
 		for (;;) {
 			index_entry_mid = (index_entry_low + index_entry_high) / 2;
 			if (key < getKeyFromEntry(node->entry[index_entry_mid])) {
@@ -421,21 +425,148 @@ _clbptSearch(
 }
 	
 __kernel void
-_clbptInitInsertWritePacketBuffer(
-	__global clbpt_insert_write_packet *insert,
-	__global cpu_address_t *leaf_addr,
-	uint num_insert,
+_clbptInitWPacketBuffer(
+	__global clbpt_wpacket *wpacket,
+	__global cpu_address_t *leaf_addr,	// 0 for delete w_packet
+	uint buffer_size,
 	__global struct clheap *heap
 	)
 {
 	uint gid = get_global_id(0);
 	int key;
-	cpu_address_t *addr;
+	cpu_address_t addr;
+	cpu_address_t *new_alloc;
 	
-	if (gid >= num_insert) return;
-	key = getKeyFromInsertWritePacket(insert[gid]);
-	addr = (cpu_address_t *)malloc(heap, sizeof(cpu_address_t));
-	*addr = *leaf_addr;
-	setInsertWritePacket(insert[gid], key, (uintptr_t)addr);
+	if (gid >= buffer_size) return;
+	if ((addr = leaf_addr[gid]) == 0) {	// Delete W_packet
+		initDeleteWPacket(wpacket[gid]);
+	}
+	else {								// Insert W_packet
+		new_alloc = (cpu_address_t *)malloc(heap, sizeof(cpu_address_t));
+		*new_alloc = addr;
+		initInsertWPacket(wpacket[gid], (uintptr_t)new_alloc);
+	}
 }
 
+__kernel void
+_clbptWPacketBufferHandler(
+	__global clbpt_wpacket *wpacket,
+	uint num_wpacket,
+	__global struct clheap *heap
+	)
+{
+	int wpacket_sgroup_start;
+	uintptr_t prev_target, cur_target;
+	uintptr_t prev_parent, cur_parent;
+	uint wpacket_alloc = 0;
+	uint wpacket_group_count = 1;
+	
+	wpacket_sgroup_start = 0;
+	prev_target = wpacket[0].target;
+	prev_parent = (clbpt_int_node *)(wpacket[0].target)->parent;
+	for (int i = 1; i < num_wpacket; i++) {
+		cur_target = wpacket[i].target;
+		cur_parent = (clbpt_int_node *)(wpacket[i].target)->parent;
+		if (cur_parent != prev_parent) {
+			for (uint j = 0; j < 2 * wpacket_group_count; j++) {
+				wpacket[num_wpacket + wpacket_alloc + j] = WPACKET_NOP;
+			}
+			// enqueue_kernel
+			wpacket_sgroup_start = i;
+			wpacket_alloc += 2 * wpacket_group_count;
+			wpacket_group_count = 1;
+			prev_target = cur_target;
+			prev_parent = cur_parent;
+		}
+		else if (cur_target != prev_target) {
+			wpacket_group_count++;
+			prev_target = cur_target;
+		}
+	}
+	for (uint j = 0; j < 2 * wpacket_group_count; j++) {
+		wpacket[num_wpacket + wpacket_alloc + j] = WPACKET_NOP;
+	}
+	// enqueue_kernel
+	
+}
+
+__kernel void
+_clbptWPacketSuperGroupHandler(
+	__global clbpt_wpacket *wpacket,
+	uint num_wpacket_in_super_group,
+	__global clbpt_wpacket *propagate,
+	__global struct clheap *heap
+	)
+{
+	int wpacket_group_start;
+	uintptr_t prev_target, cur_target;
+	uint top_propagate = 0;
+	
+	wpacket_group_start = 0;
+	prev_target = wpacket[0].target;
+	for (int i = 1; i < num_wpacket_in_super_group; i++) {
+		cur_target = wpacket[i].target;
+		if (cur_target != prev_target) {
+			// call function
+			wpacket_group_start = i;
+			prev_target = cur_target;
+		}
+	}
+	// call function
+}
+
+void
+_clbptWPacketGroupHandler(
+	__global clbpt_wpacket *wpacket,
+	uint num_wpacket_in_group,
+	__global clbpt_wpacket *propagate,
+	uint *top_propagate,
+	__global struct clheap *heap
+	)
+{
+	clbpt_int_node *target = (clbpt_int_node *)(wpacket[0].target);
+	clbpt_entry merge_entry[2 * CLBPT_ORDER];
+	uint num_merge_entry = 0;
+	uint index_old_entry = 0;
+	uint num_old_entry = target->num_entry;
+	uint index_wpacket = 0;
+	clbpt_wpacket wpkt;
+	
+	// Deal with W-packets
+	for (index_wpacket = 0; index_wpacket < num_wpacket_in_group; index_wpacket++) {
+		wpkt = wpacket[index_wpacket];
+		if (isNopWPacket(wpkt)) {
+			continue;
+		} else if (isInsertWpacket(wpkt)) {
+			while (index_old_entry < num_old_entry && 
+				getKeyFromEntry(target->entry[index_old_entry]) < getKeyFromWPacket(wpkt))
+			{
+				merge_entry[num_merge_entry++] = target->entry[index_old_entry];
+				index_old_entry++;
+			}
+			merge_entry[num_merge_entry].key = wpkt.key;
+			merge_entry[num_merge_entry].child = wpkt.new_addr;
+			num_merge_entry++;
+		} else {
+			while (index_old_entry < num_old_entry && 
+				getKeyFromEntry(target->entry[index_old_entry]) < getKeyFromWPacket(wpkt))
+			{
+				merge_entry[num_merge_entry++] = target->entry[index_old_entry];
+				index_old_entry++;
+			}
+			index_old_entry++;
+		}
+	}
+	
+	// Propagate
+	if (num_merge_entry == 0) {		// Merge
+		_clbptMerge(target, propagate, top_propagate, heap);
+	} else if (num_merge_entry < CLBPT_ORDER) {		// No propagate
+		for (int i = 0; i < num_merge_entry; i++) {
+			target->entry[i] = merge_entry[i];
+		}
+		target->num_entry = num_merge_entry;
+	} else {	// Split
+		_clbptSplit(target, propagate, top_propagate, heap);
+	}
+}
