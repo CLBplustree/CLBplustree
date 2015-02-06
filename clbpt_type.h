@@ -53,18 +53,12 @@ struct _clbpt_tree {
     pthread_mutex_t mutex;
 	
     int buf_status;
-<<<<<<< HEAD
     int fetch_buf_index;
-	//const int buf_size = 65536;
-=======
-	size_t buf_size;
-	int fetch_buf_index;
->>>>>>> 1b076f3bcea84bc0b7f923be8ae11989eaf8fa87
 	clbpt_packet *fetch_buf;
 	clbpt_packet *wait_buf;
 	clbpt_packet *execute_buf;
 	void **result_buf;
-	void **wait_result_buf;
+	void **execute_result_buf;
 	
 	int degree;
 	size_t record_size;
