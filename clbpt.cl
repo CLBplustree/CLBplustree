@@ -34,6 +34,11 @@ typedef struct _clbpt_wpacket {
 	uintptr_t new_addr;		// 0 for delete w_packet
 } clbpt_wpacket;
 
+typedef struct _clbpt_property {
+	uintptr_t root;
+	uint level;
+} clbpt_property;
+
 #define getKeyFromPacket(X) (int)(((X) >> 31) & 0x80000000 | ((X) >> 32) & 0x7FFFFFFF)
 #define PACKET_NOP (0x3FFFFFFF00000000L)
 #define isReadPacket(X) (!((uchar)((X) >> 63) & 0x1))
@@ -376,17 +381,20 @@ clbptPacketSelect(
 
 __kernel void
 _clbptInitialize(
-	__global uint *level
+	cpu_address_t host_root,
+	__global clbpt_property *property,
+	__global struct clheap *heap
 	)
 {
-	*level = 1;
+	property->level = 1;
+	property->root = (uintptr_t)malloc(heap, sizeof(cpu_address_t));
+	*(cpu_address_t *)(property->root) = host_root;
 }
 
 __kernel void
 _clbptSearch(
 	__global cpu_address_t *result,
-	__global uintptr_t *root_node,
-	__global uint *level,
+	__global clbpt_property *property,
 	__global clbpt_packet *execute,
 	uint buffer_size
 	)
@@ -397,14 +405,10 @@ _clbptSearch(
 	clbpt_int_node *node;
 	
 	if (gid >= buffer_size) return;
-	if (*level == 1) {
-		result[gid] = 0;	// Root node at host side
-		return;
-	}
 	
 	key = getKeyFromPacket(execute[gid]);
-	node = (clbpt_int_node *)(*root_node);
-	for (int i = 0; i < *level - 1; i++) {
+	node = (clbpt_int_node *)(property->root);
+	for (int i = 0; i < property->level - 1; i++) {
 		index_entry_low = 0;
 		index_entry_high = node->num_entry - 1;
 		for (;;) {
@@ -454,28 +458,36 @@ _clbptWPacketGroupHandler(
 	uint num_wpacket_in_group,
 	clbpt_wpacket *propagate,
 	uint *top_propagate,
-	struct clheap *heap
+	struct clheap *heap,
+	clbpt_property *property,
+	uint level_proc
 );
 void
 _clbptMerge(
 	clbpt_int_node *target,
 	clbpt_wpacket *propagate,
 	uint *top_propagate,
-	struct clheap *heap
+	struct clheap *heap,
+	clbpt_property *property,
+	uint level_proc
 );
 void
 _clbptSplit(
 	clbpt_int_node *target,
 	clbpt_wpacket *propagate,
 	uint *top_propagate,
-	struct clheap *heap
+	struct clheap *heap,
+	clbpt_property *property,
+	uint level_proc
 );
 
 __kernel void
 _clbptWPacketBufferHandler(
 	__global clbpt_wpacket *wpacket,
 	uint num_wpacket,
-	__global struct clheap *heap
+	__global struct clheap *heap,
+	__global clbpt_property *property,
+	uint level_proc
 	)
 {
 	int wpacket_sgroup_start;
@@ -518,7 +530,9 @@ _clbptWPacketSuperGroupHandler(
 	__global clbpt_wpacket *wpacket,
 	uint num_wpacket_in_super_group,
 	__global clbpt_wpacket *propagate,
-	__global struct clheap *heap
+	__global struct clheap *heap,
+	__global clbpt_property *property,
+	uint level_proc
 	)
 {
 	int wpacket_group_start;
@@ -544,7 +558,9 @@ _clbptWPacketGroupHandler(
 	uint num_wpacket_in_group,
 	clbpt_wpacket *propagate,
 	uint *top_propagate,
-	struct clheap *heap
+	struct clheap *heap,
+	clbpt_property *property,
+	uint level_proc
 	)
 {
 	clbpt_int_node *target = (clbpt_int_node *)(wpacket[0].target);
@@ -583,14 +599,14 @@ _clbptWPacketGroupHandler(
 	
 	// Propagate
 	if (num_merge_entry == 0) {		// Merge
-		_clbptMerge(target, propagate, top_propagate, heap);
+		//_clbptMerge(target, propagate, top_propagate, heap);
 	} else if (num_merge_entry < CLBPT_ORDER) {		// No propagate
 		for (int i = 0; i < num_merge_entry; i++) {
 			target->entry[i] = merge_entry[i];
 		}
 		target->num_entry = num_merge_entry;
 	} else {	// Split
-		_clbptSplit(target, propagate, top_propagate, heap);
+		//_clbptSplit(target, propagate, top_propagate, heap);
 	}
 }
 
@@ -599,9 +615,33 @@ _clbptMerge(
 	clbpt_int_node *target,
 	clbpt_wpacket *propagate,
 	uint *top_propagate,
-	struct clheap *heap
+	struct clheap *heap,
+	clbpt_property *property,
+	uint level_proc
 	)
 {
+	clbpt_int_node *parent = (clbpt_int_node *)(target->parent);
+	int key = getParentKeyFromNode(*target);
+	uint index_entry_low, index_entry_high, index_entry_mid;
+	clbpt_int_node *sibling;
+	
+	if (level_proc == 0) {
+		
+	}
+	index_entry_low = 0;
+	index_entry_high = parent->num_entry - 1;
+	for (;;) {
+		index_entry_mid = (index_entry_low + index_entry_high) / 2;
+		if (key < getKeyFromEntry(parent->entry[index_entry_mid])) {
+			index_entry_high = index_entry_mid - 1;
+		}
+		else if (key >= getKeyFromEntry(parent->entry[index_entry_mid + 1])) {
+			index_entry_low = index_entry_mid + 1;
+		}
+		else {
+			break;
+		}
+	}
 	
 }
 
@@ -610,8 +650,10 @@ _clbptSplit(
 	clbpt_int_node *target,
 	clbpt_wpacket *propagate,
 	uint *top_propagate,
-	struct clheap *heap
+	struct clheap *heap,
+	clbpt_property *property,
+	uint level_proc
 	)
 {
-	
+
 }
