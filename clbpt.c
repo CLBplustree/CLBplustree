@@ -35,17 +35,25 @@ int clbptBufferExchange(clbpt_tree tree)
     fetch_buf_index = 0;
     
     void **result_buf_temp = tree->result_buf;
+<<<<<<< HEAD
+    tree->result_buf = tree->execute_result_buf;
+    tree->execute_result_buf = result_buf_temp;
+    tree->fetch_buf_index = 0;
+
+    err = clbptUnlockExcuteBuffer(tree);
+=======
     tree->result_buf = tree->wait_result_buf;
     tree->wait_result_buf = result_buf_temp;
     
     err = clbptUnlockWaitBuffer(tree);
+>>>>>>> 1b076f3bcea84bc0b7f923be8ae11989eaf8fa87
     if( err != CLBPT_SUCCESS ) return err;
     return CLBPT_SUCCESS;
 }
 
 int clbptEnqueueFecthBuffer(clbpt_tree tree, clbpt_packet packet, void *records)
 {
-    if( tree->fetch_buf_index >= tree->buf_size )
+    if( tree->fetch_buf_index >= CLBPT_BUF_SIZE )
     {
         clbptBufferExchange(tree);
     }
@@ -73,6 +81,13 @@ int clbptCreateTree(clbpt_tree dst_tree, clbpt_platform platform, const int degr
     dst_tree->degree = degree;
     dst_tree->record_size = record_size;
     dst_tree->buf_status = CLBPT_STATUS_DONE;
+<<<<<<< HEAD
+    //dst_tree->buf_size = buf_size;
+    dst_tree->fetch_buf = calloc(sizeof(clbpt_packet),CLBPT_BUF_SIZE/*tree->buf_size*/);
+    dst_tree->execute_buf = calloc(sizeof(clbpt_packet),CLBPT_BUF_SIZE/*tree->buf_size*/);
+    dst_tree->result_buf = calloc(sizeof(void *),CLBPT_BUF_SIZE/*tree->buf_size*/);
+    dst_tree->execute_result_buf = calloc(sizeof(void *),CLBPT_BUF_SIZE/*tree->buf_size*/);
+=======
     dst_tree->buf_size = buf_size;
     dst_tree->fetch_buf_index = 0;
     dst_tree->fetch_buf = calloc(sizeof(clbpt_packet),buf_size);
@@ -80,6 +95,7 @@ int clbptCreateTree(clbpt_tree dst_tree, clbpt_platform platform, const int degr
     dst_tree->execute_buf = calloc(sizeof(clbpt_packet),buf_size);
     dst_tree->result_buf = calloc(sizeof(void *),buf_size);
     dst_tree->wait_result_buf = calloc(sizeof(void *),buf_size);
+>>>>>>> 1b076f3bcea84bc0b7f923be8ae11989eaf8fa87
     
     if( (err = pthread_mutex_init(&(dst_tree->mutex),NULL)) != 0)
     {
