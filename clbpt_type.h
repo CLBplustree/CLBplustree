@@ -51,12 +51,13 @@ struct _clbpt_tree {
     pthread_mutex_t mutex;
 	
     int buf_status;
-    int fetch_buf_index;
 	size_t buf_size;
+	int fetch_buf_index;
 	clbpt_packet *fetch_buf;
+	clbpt_packet *wait_buf;
 	clbpt_packet *execute_buf;
 	void **result_buf;
-	void **execute_result_buf;
+	void **wait_result_buf;
 	
 	int degree;
 	size_t record_size;

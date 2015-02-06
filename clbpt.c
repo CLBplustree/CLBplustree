@@ -11,14 +11,14 @@
 #define CLBPT_PACKET_INSERT(x,y) (((( (clbpt_packet)(x) | 0x80000000 ) << 32 ) & 0xFFFFFFFF00000000 ) | (uint32_t)(y) )
 #define CLBPT_PACKET_DELETE(x) (((( (clbpt_packet)(x) | 0x80000000 ) << 32 ) & 0xFFFFFFFF00000000 ))
 
-int clbptLockExcuteBuffer(clbpt_tree tree)
+int clbptLockWaitBuffer(clbpt_tree tree)
 {
     int err = pthread_mutex_lock(&(tree->mutex));
     if( err != CLBPT_SUCCESS )return err;
     return CLBPT_SUCCESS;
 }
 
-int clbptUnlockExcuteBuffer(clbpt_tree tree)
+int clbptUnlockWaitBuffer(clbpt_tree tree)
 {
     int err = pthread_mutex_unlock(&(tree->mutex));
     if( err != CLBPT_SUCCESS )return err;
@@ -27,17 +27,18 @@ int clbptUnlockExcuteBuffer(clbpt_tree tree)
 
 int clbptBufferExchange(clbpt_tree tree)
 {
-    int err = clbptLockExcuteBuffer(tree);
+    int err = clbptLockWaitBuffer(tree);
     if( err != CLBPT_SUCCESS ) return err;
     clbpt_packet *fetch_buf_temp = tree->fetch_buf;
-    tree->fetch_buf = tree->execute_buf;
-    tree->execute_buf = fetch_buf_temp;
+    tree->fetch_buf = tree->wait_buf;
+    tree->wait_buf = fetch_buf_temp;
+    fetch_buf_index = 0;
     
     void **result_buf_temp = tree->result_buf;
-    tree->result_buf = tree->execute_result_buf;
-    tree->execute_result_buf = result_buf_temp;
+    tree->result_buf = tree->wait_result_buf;
+    tree->wait_result_buf = result_buf_temp;
     
-    err = clbptUnlockExcuteBuffer(tree);
+    err = clbptUnlockWaitBuffer(tree);
     if( err != CLBPT_SUCCESS ) return err;
     return CLBPT_SUCCESS;
 }
@@ -73,10 +74,12 @@ int clbptCreateTree(clbpt_tree dst_tree, clbpt_platform platform, const int degr
     dst_tree->record_size = record_size;
     dst_tree->buf_status = CLBPT_STATUS_DONE;
     dst_tree->buf_size = buf_size;
+    dst_tree->fetch_buf_index = 0;
     dst_tree->fetch_buf = calloc(sizeof(clbpt_packet),buf_size);
+    dst_tree->wait_buf = calloc(sizeof(clbpt_packet),buf_size);
     dst_tree->execute_buf = calloc(sizeof(clbpt_packet),buf_size);
     dst_tree->result_buf = calloc(sizeof(void *),buf_size);
-    dst_tree->execute_result_buf = calloc(sizeof(void *),buf_size);
+    dst_tree->wait_result_buf = calloc(sizeof(void *),buf_size);
     
     if( (err = pthread_mutex_init(&(dst_tree->mutex),NULL)) != 0)
     {
@@ -89,7 +92,7 @@ int clbptReleaseTree(clbpt_tree tree)
 {
     if(tree == NULL ) return CLBPT_SUCCESS;
     if(tree->fetch_buf != NULL ) free(tree->fetch_buf);
-    if(tree->execute_buf != NULL ) free(tree->execute_buf);
+    if(tree->wait_buf != NULL ) free(tree->wait_buf);
     if(tree->result_buf != NULL ) free(tree->result_buf);
     free(tree);
     return CLBPT_SUCCESS;
@@ -150,7 +153,7 @@ int clbptFinish(clbpt_tree tree)
 {
     int err = clbptFlush(tree);
     if( err != CLBPT_SUCCESS ) return err;
-    err = clbptWaitExcuteBufferEmpty(tree);
+    err = clbptWaitBufferEmpty(tree);
     if( err != CLBPT_SUCCESS ) return err;
     return CLBPT_SUCCESS;
 }
