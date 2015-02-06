@@ -58,7 +58,7 @@ typedef struct _clbpt_wpacket {
 #define isInsertWPacket(X) ((X).new_addr != 0)
 #define isDeleteWPacket(X) ((X).new_addr == 0)
 #define isNopWPacket(X) ((X).target == 0)
-#define getKeyFromWPacket(X) (int)(((X) << 1) & 0x80000000 | (X) & 0x7FFFFFFF)
+#define getKeyFromWPacket(X) (int)(((X).key << 1) & 0x80000000 | (X).key & 0x7FFFFFFF)
 
 __kernel void
 clbptPacketSort(
@@ -448,6 +448,29 @@ _clbptInitWPacketBuffer(
 	}
 }
 
+void
+_clbptWPacketGroupHandler(
+	clbpt_wpacket *wpacket,
+	uint num_wpacket_in_group,
+	clbpt_wpacket *propagate,
+	uint *top_propagate,
+	struct clheap *heap
+);
+void
+_clbptMerge(
+	clbpt_int_node *target,
+	clbpt_wpacket *propagate,
+	uint *top_propagate,
+	struct clheap *heap
+);
+void
+_clbptSplit(
+	clbpt_int_node *target,
+	clbpt_wpacket *propagate,
+	uint *top_propagate,
+	struct clheap *heap
+);
+
 __kernel void
 _clbptWPacketBufferHandler(
 	__global clbpt_wpacket *wpacket,
@@ -463,10 +486,10 @@ _clbptWPacketBufferHandler(
 	
 	wpacket_sgroup_start = 0;
 	prev_target = wpacket[0].target;
-	prev_parent = (clbpt_int_node *)(wpacket[0].target)->parent;
+	prev_parent = ((clbpt_int_node *)(wpacket[0].target))->parent;
 	for (int i = 1; i < num_wpacket; i++) {
 		cur_target = wpacket[i].target;
-		cur_parent = (clbpt_int_node *)(wpacket[i].target)->parent;
+		cur_parent = ((clbpt_int_node *)(wpacket[i].target))->parent;
 		if (cur_parent != prev_parent) {
 			for (uint j = 0; j < 2 * wpacket_group_count; j++) {
 				wpacket[num_wpacket + wpacket_alloc + j] = WPACKET_NOP;
@@ -517,11 +540,11 @@ _clbptWPacketSuperGroupHandler(
 
 void
 _clbptWPacketGroupHandler(
-	__global clbpt_wpacket *wpacket,
+	clbpt_wpacket *wpacket,
 	uint num_wpacket_in_group,
-	__global clbpt_wpacket *propagate,
+	clbpt_wpacket *propagate,
 	uint *top_propagate,
-	__global struct clheap *heap
+	struct clheap *heap
 	)
 {
 	clbpt_int_node *target = (clbpt_int_node *)(wpacket[0].target);
@@ -537,7 +560,7 @@ _clbptWPacketGroupHandler(
 		wpkt = wpacket[index_wpacket];
 		if (isNopWPacket(wpkt)) {
 			continue;
-		} else if (isInsertWpacket(wpkt)) {
+		} else if (isInsertWPacket(wpkt)) {
 			while (index_old_entry < num_old_entry && 
 				getKeyFromEntry(target->entry[index_old_entry]) < getKeyFromWPacket(wpkt))
 			{
@@ -569,4 +592,26 @@ _clbptWPacketGroupHandler(
 	} else {	// Split
 		_clbptSplit(target, propagate, top_propagate, heap);
 	}
+}
+
+void
+_clbptMerge(
+	clbpt_int_node *target,
+	clbpt_wpacket *propagate,
+	uint *top_propagate,
+	struct clheap *heap
+	)
+{
+	
+}
+
+void
+_clbptSplit(
+	clbpt_int_node *target,
+	clbpt_wpacket *propagate,
+	uint *top_propagate,
+	struct clheap *heap
+	)
+{
+	
 }
