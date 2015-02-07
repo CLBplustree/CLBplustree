@@ -39,7 +39,7 @@ int clbptBufferExchange(clbpt_tree tree)
     tree->execute_result_buf = result_buf_temp;
     tree->fetch_buf_index = 0;
 
-    err = clbptUnlockExcuteBuffer(tree);
+    err = clbptUnlockWaitBuffer(tree);
     if( err != CLBPT_SUCCESS ) return err;
     return CLBPT_SUCCESS;
 }
@@ -57,11 +57,21 @@ int clbptEnqueueFecthBuffer(clbpt_tree tree, clbpt_packet packet, void *records)
 
 int clbptCreatePlatform(clbpt_platform dst_platform, cl_context context)
 {
-    int err = CLBPT_SUCCESS;
+    cl_int err;
+    size_t cb;
+    
     dst_platform = malloc(sizeof(struct _clbpt_platform));
     dst_platform->context = context;
-    dst_platform->queue = clCreateCommandQueue(context, /*TO DO*/ , /*TO DO*/ , &err );
-    if( err != CLBPT_SUCCESS ) return err;
+    
+    clGetContextInfo(context, CL_CONTEXT_DEVICES, 0, NULL, &cb);
+    cl_device_id *devices = calloc( sizeof(cl_device_id),cb);
+    clGetContextInfo(context, CL_CONTEXT_DEVICES, cb, &devices[0], 0);
+    clGetDeviceInfo(devices[0], CL_DEVICE_NAME, 0, NULL, &cb);
+    dst_platform->queue = clCreateCommandQueue(context, devices[0], 0, &err);
+    if(err != CL_SUCCESS || dst_platform->queue == 0) {
+        clReleaseContext(context);
+        return err;
+    }
 	return CLBPT_SUCCESS;
 }
 
@@ -74,10 +84,10 @@ int clbptCreateTree(clbpt_tree dst_tree, clbpt_platform platform, const int degr
     dst_tree->degree = degree;
     dst_tree->record_size = record_size;
     dst_tree->buf_status = CLBPT_STATUS_DONE;
-    dst_tree->fetch_buf = calloc(sizeof(clbpt_packet),CLBPT_BUF_SIZE/*tree->buf_size*/);
-    dst_tree->execute_buf = calloc(sizeof(clbpt_packet),CLBPT_BUF_SIZE/*tree->buf_size*/);
-    dst_tree->result_buf = calloc(sizeof(void *),CLBPT_BUF_SIZE/*tree->buf_size*/);
-    dst_tree->execute_result_buf = calloc(sizeof(void *),CLBPT_BUF_SIZE/*tree->buf_size*/);
+    dst_tree->fetch_buf = calloc(sizeof(clbpt_packet),CLBPT_BUF_SIZE);
+    dst_tree->execute_buf = calloc(sizeof(clbpt_packet),CLBPT_BUF_SIZE);
+    dst_tree->result_buf = calloc(sizeof(void *),CLBPT_BUF_SIZE);
+    dst_tree->execute_result_buf = calloc(sizeof(void *),CLBPT_BUF_SIZE);
     dst_tree->fetch_buf_index = 0;
     
     if( (err = pthread_mutex_init(&(dst_tree->mutex),NULL)) != 0)
@@ -152,7 +162,8 @@ int clbptFinish(clbpt_tree tree)
 {
     int err = clbptFlush(tree);
     if( err != CLBPT_SUCCESS ) return err;
-    err = clbptWaitBufferEmpty(tree);
+    err = clbptLockWaitBuffer(tree);
+    err = clbptUnlockWaitBuffer(tree);
     if( err != CLBPT_SUCCESS ) return err;
     return CLBPT_SUCCESS;
 }

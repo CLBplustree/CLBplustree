@@ -4,6 +4,7 @@
  
 #include <stdint.h>
 #include <pthread.h>
+#define CL_USE_DEPRECATED_OPENCL_2_0_APIS 
 #ifdef __APPLE__
 #include <OpenCL/opencl.h>
 #else
