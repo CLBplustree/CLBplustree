@@ -24,15 +24,18 @@ struct _clbpt_platform {
 	cl_program program;
 	cl_kernel *kernels;
 };
-	
+
+typedef struct _clbpt_property {
+	uint32_t *root;
+	uint32_t level;
+} clbpt_property;
+
 typedef uint64_t clbpt_entry;
  
-
 typedef struct _clbpt_int_node {
 	clbpt_entry *entry;
 	uint32_t num_entry;
 } clbpt_node;
-
 
 typedef struct _clbpt_leaf_node {
 	struct _entry {
@@ -52,7 +55,7 @@ struct _clbpt_tree {
 	clbpt_platform platform;
 	pthread_t *handler;
     pthread_mutex_t mutex;
-	
+
     int buf_status;
     int fetch_buf_index;
 	clbpt_packet *fetch_buf;
@@ -60,13 +63,15 @@ struct _clbpt_tree {
 	clbpt_packet *execute_buf;
 	void **result_buf;
 	void **execute_result_buf;
-	
+
 	int degree;
 	size_t record_size;
 	cl_command_queue queue;
+
+	clbpt_property property;
 	cl_mem heap;
 	clbpt_leaf_node *leaf;
-	clbpt_node *root;
+	//clbpt_node *root;
 };
 
 typedef struct _clbpt_tree * clbpt_tree;

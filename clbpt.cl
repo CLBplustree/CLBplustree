@@ -66,7 +66,7 @@ typedef struct _clbpt_property {
 #define getKeyFromWPacket(X) (int)(((X).key << 1) & 0x80000000 | (X).key & 0x7FFFFFFF)
 
 __kernel void
-clbptPacketSort(
+_clbptPacketSort(
 			__global clbpt_packet *execute,
 			__global cpu_address_t *result_addr,
 			__global clbpt_packet *execute_temp,
@@ -230,7 +230,7 @@ clbptPacketSort(
 }
 
 __kernel void
-clbptPacketSelect(
+_clbptPacketSelect(
 	__global uchar *isOver,
 	__global clbpt_packet *wait,
 	__global clbpt_packet *execute,
@@ -302,7 +302,7 @@ clbptPacketSelect(
 
 /*
 __kernel void
-clbptPacketSelect(
+_clbptPacketSelect(
 	__global uchar *isOver,
 	__global clbpt_packet *wait,
 	__global clbpt_packet *select,
@@ -396,7 +396,7 @@ _clbptSearch(
 	__global cpu_address_t *result,
 	__global clbpt_property *property,
 	__global clbpt_packet *execute,
-	uint buffer_size
+	__const uint buffer_size
 	)
 {
 	uint gid = get_global_id(0);
