@@ -19,4 +19,11 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree);
  */
 int _clbptHandleExecuteBuffer(clbpt_tree tree);
 
+/**
+ * @brief initialization of clbpt
+ * @param tree.
+ * @return Success or not.
+ */
+int _clbptInitialize(clbpt_tree tree);
+
 #endif /* __CLBPT_CORE_H_INCLUDED */

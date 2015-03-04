@@ -17,6 +17,13 @@
 
 #define CLBPT_STATUS_DONE 0
 #define CLBPT_STATUS_WAIT 1
+#define CLBPT_PACKET_SELECT 0
+#define CLBPT_PACKET_SORT 1
+#define CLBPT_INITIALIZE 2
+#define CLBPT_SEARCH 3
+#define CLBPT_INIT_WPACKET_BUFFER 4
+#define CLBPT_WPACKET_BUFFER_HANDLER 5
+#define CLBPT_WPACKET_SUPER_GROUP_HANDLER 6
 
 struct _clbpt_platform {
 	cl_context context;
@@ -26,7 +33,7 @@ struct _clbpt_platform {
 };
 
 typedef struct _clbpt_property {
-	uint32_t *root;
+	void *root;
 	uint32_t level;
 } clbpt_property;
 
@@ -71,7 +78,7 @@ struct _clbpt_tree {
 	clbpt_property property;
 	cl_mem heap;
 	clbpt_leaf_node *leaf;
-	//clbpt_node *root;
+	clbpt_node *root;
 };
 
 typedef struct _clbpt_tree * clbpt_tree;
