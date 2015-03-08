@@ -5,29 +5,40 @@
 #include "clbpt.h"
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
 
 #define CLBPT_PACKET_SEARCH(x) ((( (clbpt_packet)(x) << 32 ) & 0x7FFFFFFF00000000 ) | 0x7FFFFFFF )
 #define CLBPT_PACKET_RANGE(x,y) ((( (clbpt_packet)(x)  << 32 ) & 0xFFFFFFFF00000000 ) | ( (uint32_t)(y) | 0x80000000 ) )
 #define CLBPT_PACKET_INSERT(x,y) (((( (clbpt_packet)(x) | 0x80000000 ) << 32 ) & 0xFFFFFFFF00000000 ) | (uint32_t)(y) )
 #define CLBPT_PACKET_DELETE(x) (((( (clbpt_packet)(x) | 0x80000000 ) << 32 ) & 0xFFFFFFFF00000000 ))
 
-int clbptLockWaitBuffer(clbpt_tree tree)
+int _clbptHandler(clbpt_tree tree)
 {
-    int err = pthread_mutex_lock(&(tree->mutex));
+    while( 1 )
+    {
+        pthread_mutex_lock(&(tree->loop_mutex));
+        _clbptSelectFromWaitBuffer(tree);
+        _clbptHandleExecuteBuffer(tree);
+    }
+}
+
+int _clbptLockWaitBuffer(clbpt_tree tree)
+{
+    int err = pthread_mutex_lock(&(tree->buffer_mutex));
     if( err != CLBPT_SUCCESS )return err;
     return CLBPT_SUCCESS;
 }
 
-int clbptUnlockWaitBuffer(clbpt_tree tree)
+int _clbptUnlockWaitBuffer(clbpt_tree tree)
 {
-    int err = pthread_mutex_unlock(&(tree->mutex));
+    int err = pthread_mutex_unlock(&(tree->buffer_mutex));
     if( err != CLBPT_SUCCESS )return err;
     return CLBPT_SUCCESS;
 }
 
-int clbptBufferExchange(clbpt_tree tree)
+int _clbptBufferExchange(clbpt_tree tree)
 {
-    int err = clbptLockWaitBuffer(tree);
+    int err = _clbptLockWaitBuffer(tree);
     if( err != CLBPT_SUCCESS ) return err;
     clbpt_packet *fetch_buf_temp = tree->fetch_buf;
     tree->fetch_buf = tree->wait_buf;
@@ -39,8 +50,9 @@ int clbptBufferExchange(clbpt_tree tree)
     tree->execute_result_buf = result_buf_temp;
     tree->fetch_buf_index = 0;
 
-    err = clbptUnlockWaitBuffer(tree);
+    err = _clbptUnlockWaitBuffer(tree);
     if( err != CLBPT_SUCCESS ) return err;
+    pthread_mutex_unlock(&(tree->loop_mutex));
     return CLBPT_SUCCESS;
 }
 
@@ -48,7 +60,7 @@ int clbptEnqueueFecthBuffer(clbpt_tree tree, clbpt_packet packet, void *records)
 {
     if( tree->fetch_buf_index >= CLBPT_BUF_SIZE )
     {
-        clbptBufferExchange(tree);
+        _clbptBufferExchange(tree);
     }
     tree->fetch_buf[ tree->fetch_buf_index ] = packet;
     tree->result_buf[ tree->fetch_buf_index++ ] = records;
@@ -78,7 +90,7 @@ int clbptCreatePlatform(clbpt_platform dst_platform, cl_context context)
 int clbptCreateTree(clbpt_tree dst_tree, clbpt_platform platform, const int degree, const size_t record_size)
 {
     int err;
-
+    pthread_t thread;
     dst_tree = malloc(sizeof(struct _clbpt_tree));
     dst_tree->platform = platform;
     dst_tree->degree = degree;
@@ -89,11 +101,19 @@ int clbptCreateTree(clbpt_tree dst_tree, clbpt_platform platform, const int degr
     dst_tree->result_buf = calloc(sizeof(void *),CLBPT_BUF_SIZE);
     dst_tree->execute_result_buf = calloc(sizeof(void *),CLBPT_BUF_SIZE);
     dst_tree->fetch_buf_index = 0;
-    
-    if( (err = pthread_mutex_init(&(dst_tree->mutex),NULL)) != 0)
+
+    if( (err = pthread_mutex_init(&(dst_tree->buffer_mutex),NULL)) != 0)
     {
         return err;
     }
+    
+    if( (err = pthread_mutex_init(&(dst_tree->loop_mutex),NULL)) != 0)
+    {
+        return err;
+    }
+    
+    pthread_create(&thread,NULL,_clbptHandler,dst_tree);
+    
     return CLBPT_SUCCESS;
 }
 
@@ -153,7 +173,7 @@ int clbptEnqueueDeletions(clbpt_tree tree, int num_deletes, CLBPT_KEY_TYPE *keys
 
 int clbptFlush(clbpt_tree tree)
 {
-    int err = clbptBufferExchange(tree);
+    int err = _clbptBufferExchange(tree);
     if( err != CLBPT_SUCCESS ) return err;
     return CLBPT_SUCCESS;
 }
@@ -162,8 +182,9 @@ int clbptFinish(clbpt_tree tree)
 {
     int err = clbptFlush(tree);
     if( err != CLBPT_SUCCESS ) return err;
-    err = clbptLockWaitBuffer(tree);
-    err = clbptUnlockWaitBuffer(tree);
+    err = _clbptLockWaitBuffer(tree);
+    err = _clbptUnlockWaitBuffer(tree);
+    pthread_mutex_lock(&(tree->loop_mutex));
     if( err != CLBPT_SUCCESS ) return err;
     return CLBPT_SUCCESS;
 }
