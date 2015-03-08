@@ -23,12 +23,12 @@ int _clbptLockWaitBuffer(clbpt_tree tree)                                       
     if( err != CLBPT_SUCCESS )return err                                        ;
     return CLBPT_SUCCESS                                                        ;}
 
-int _clbptUnlockWaitBuffer(clbpt_tree tree){
+int _clbptUnlockWaitBuffer(clbpt_tree tree)                                     {
     int err = pthread_mutex_unlock(&(tree->buffer_mutex))                       ;
     if( err != CLBPT_SUCCESS )return err                                        ;
     return CLBPT_SUCCESS                                                        ;}
 
-int _clbptBufferExchange(clbpt_tree tree){
+int _clbptBufferExchange(clbpt_tree tree)                                       {
     int err = _clbptLockWaitBuffer(tree)                                        ;
     if( err != CLBPT_SUCCESS ) return err                                       ;
     clbpt_packet *fetch_buf_temp = tree->fetch_buf                              ;
@@ -44,16 +44,19 @@ int _clbptBufferExchange(clbpt_tree tree){
     pthread_mutex_unlock(&(tree->loop_mutex))                                   ;
     return CLBPT_SUCCESS                                                        ;}
 
-int clbptEnqueueFecthBuffer(clbpt_tree tree, clbpt_packet packet, void *records)
-{
+int clbptEnqueueFecthBuffer(
+        clbpt_tree tree, 
+        clbpt_packet packet, 
+        void *records)                                                          {
     if( tree->fetch_buf_index >= CLBPT_BUF_SIZE )                               {
         _clbptBufferExchange(tree)                                              ;}
     tree->fetch_buf[ tree->fetch_buf_index ] = packet                           ;
     tree->result_buf[ tree->fetch_buf_index++ ] = records                       ;
     return CLBPT_SUCCESS                                                        ;}
 
-int clbptCreatePlatform(clbpt_platform dst_platform, cl_context context)
-{
+int clbptCreatePlatform(
+        clbpt_platform dst_platform, 
+        cl_context context)                                                     {
     cl_int err                                                                  ;
     size_t cb                                                                   ;
     dst_platform = malloc(sizeof(struct _clbpt_platform))                       ;
@@ -68,7 +71,11 @@ int clbptCreatePlatform(clbpt_platform dst_platform, cl_context context)
         return err                                                              ;}
 	return CLBPT_SUCCESS                                                        ;}
 
-int clbptCreateTree(clbpt_tree dst_tree, clbpt_platform platform, const int degree, const size_t record_size){
+int clbptCreateTree(	
+            clbpt_tree dst_tree, 
+			clbpt_platform platform, 
+			const int degree, 
+			const size_t record_size)				                            {
     int err                                                                     ;
     pthread_t thread                                                            ;
     dst_tree = malloc(sizeof(struct _clbpt_tree))                               ;
@@ -81,8 +88,10 @@ int clbptCreateTree(clbpt_tree dst_tree, clbpt_platform platform, const int degr
     dst_tree->result_buf = calloc(sizeof(void *),CLBPT_BUF_SIZE)                ;
     dst_tree->execute_result_buf = calloc(sizeof(void *),CLBPT_BUF_SIZE)        ;
     dst_tree->fetch_buf_index = 0                                               ;
-    if( (err = pthread_mutex_init(&(dst_tree->buffer_mutex),NULL)) != 0)return err;
-    if( (err = pthread_mutex_init(&(dst_tree->loop_mutex),NULL)) != 0) return err;
+    if( (err = pthread_mutex_init(&(dst_tree->buffer_mutex),NULL)) != 0)
+	    return err								                                ;
+    if( (err = pthread_mutex_init(&(dst_tree->loop_mutex),NULL)) != 0) 
+	    return err								                                ;
     _clbptInitialize(dst_tree)                                                  ;
     pthread_create(&thread,NULL,_clbptHandler,dst_tree)                         ;
     return CLBPT_SUCCESS                                                        ;}
@@ -95,31 +104,59 @@ int clbptReleaseTree(clbpt_tree tree)                                           
     free(tree)                                                                  ;
     return CLBPT_SUCCESS                                                        ;}
 
-int clbptEnqueueSearches(clbpt_tree tree, int num_keys, CLBPT_KEY_TYPE *keys, void *records){
+int clbptEnqueueSearches(	
+                clbpt_tree tree, 
+				int num_keys, 
+				CLBPT_KEY_TYPE *keys, 
+				void *records)					                                {
 	int i, err                                                                  ;
 	for( i = 0 ; i < num_keys ; i++ )                                           {
-		err = clbptEnqueueFecthBuffer(tree, CLBPT_PACKET_SEARCH(keys[i]), records);
+		err = clbptEnqueueFecthBuffer(	
+                tree, 
+				CLBPT_PACKET_SEARCH(keys[i]), 
+				records)			                                            ;
         if( err != CLBPT_SUCCESS ) return err                                   ;}
     return CLBPT_SUCCESS                                                        ;}
 
-int clbptEnqueueRangeSearches(clbpt_tree tree, int num_keys, CLBPT_KEY_TYPE *l_keys, CLBPT_KEY_TYPE *u_keys, void **record_list){
+int clbptEnqueueRangeSearches(
+                clbpt_tree tree, 
+                int num_keys, 
+                CLBPT_KEY_TYPE *l_keys, 
+                CLBPT_KEY_TYPE *u_keys, 
+                void **record_list)                                             {
 	int i, err                                                                  ;
-	for( i = 0 ; i < num_keys ; i++ )                                       	{
-		err = clbptEnqueueFecthBuffer(tree, CLBPT_PACKET_RANGE(l_keys[i],u_keys[i]), (void *)record_list);
+	for( i = 0 ; i < num_keys ; i++ )                                           {
+		err = clbptEnqueueFecthBuffer(
+			    tree, 
+			    CLBPT_PACKET_RANGE(l_keys[i],u_keys[i]), 
+			    (void *)record_list)    	                            		;
         if( err != CLBPT_SUCCESS ) return err                                   ;}
     return CLBPT_SUCCESS                                                        ;}
 
-int clbptEnqueueInsertions(clbpt_tree tree, int num_inserts, CLBPT_KEY_TYPE *keys, void *records){
+int clbptEnqueueInsertions(	
+                clbpt_tree tree, 
+				int num_inserts, 
+				CLBPT_KEY_TYPE *keys, 
+				void *records)				                                	{
 	int i, err                                                                  ;
 	for( i = 0 ; i < num_inserts ; i++ )                                        {
-		err = clbptEnqueueFecthBuffer(tree, CLBPT_PACKET_INSERT(keys[i],0), records);
+		err = clbptEnqueueFecthBuffer(	
+                tree, 
+				CLBPT_PACKET_INSERT(keys[i],0),
+				records)        			                                    ;
         if( err != CLBPT_SUCCESS ) return err                                   ;}
     return CLBPT_SUCCESS                                                        ;}
 
-int clbptEnqueueDeletions(clbpt_tree tree, int num_deletes, CLBPT_KEY_TYPE *keys){
+int clbptEnqueueDeletions(
+        clbpt_tree tree, 
+        int num_deletes, 
+        CLBPT_KEY_TYPE *keys)                                                   {
 	int i, err                                                                  ;
 	for( i = 0 ; i < num_deletes ; i++ )                                        {
-		err = clbptEnqueueFecthBuffer(tree, CLBPT_PACKET_DELETE(keys[i]), NULL) ;
+		err = clbptEnqueueFecthBuffer(	
+                tree, 
+				CLBPT_PACKET_DELETE(keys[i]), 
+				NULL)        				                                    ;
         if( err != CLBPT_SUCCESS ) return err                                   ;}
     return CLBPT_SUCCESS                                                        ;}
 
