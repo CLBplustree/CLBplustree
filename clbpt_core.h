@@ -5,6 +5,8 @@
 #ifndef __CLBPT_CORE_H_INCLUDED
 #define __CLBPT_CORE_H_INCLUDED
 
+#include "clbpt_type.h"
+
 /**
  * @brief Select and sort from waitng buffer.
  * @param tree.

@@ -112,6 +112,7 @@ int clbptCreateTree(clbpt_tree dst_tree, clbpt_platform platform, const int degr
         return err;
     }
     
+    _clbptInitialize(dst_tree);
     pthread_create(&thread,NULL,_clbptHandler,dst_tree);
     
     return CLBPT_SUCCESS;

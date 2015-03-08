@@ -4,7 +4,6 @@
  
 #include "clbpt_core.h"
 #include "clbpt_type.h"
-#include "clbpt.h"
 #include <assert.h>
 
 // Static Global Variables

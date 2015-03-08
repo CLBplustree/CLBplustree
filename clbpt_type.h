@@ -2,6 +2,9 @@
  * @file Type definitions of CLBPT.
  */
  
+#ifndef __CLBPT_TYPE_H_INCLUDED
+#define __CLBPT_TYPE_H_INCLUDED
+
 #include <stdint.h>
 #include <pthread.h>
 #define CL_USE_DEPRECATED_OPENCL_2_0_APIS 
@@ -83,3 +86,5 @@ struct _clbpt_tree {
 };
 
 typedef struct _clbpt_tree * clbpt_tree;
+
+#endif
