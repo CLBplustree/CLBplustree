@@ -14,8 +14,10 @@ typedef uint cpu_address_t;
 typedef ulong cpu_address_t;
 #endif
 
+typedef uint clbpt_key
+
 typedef struct _clbpt_entry {
-	uint key;
+	clbpt_key key;
 	uintptr_t child;
 } clbpt_entry;
  
@@ -28,11 +30,17 @@ typedef struct _clbpt_int_node {
 
 typedef	ulong clbpt_packet;
 
+/*
 typedef struct _clbpt_wpacket {
 	uintptr_t target;		// 0 for nop w_packet
 	uint key;
 	uintptr_t new_addr;		// 0 for delete w_packet
 } clbpt_wpacket;
+*/
+
+typedef clbpt_entry clbpt_ins_pkt;
+
+typedef clbpt_key clbpt_del_pkt;
 
 typedef struct _clbpt_property {
 	uintptr_t root;
@@ -57,6 +65,7 @@ typedef struct _clbpt_property {
 
 #define getParentKeyFromNode(X) (int)((((X).parent_key) << 1) & 0x80000000 | ((X).parent_key) & 0x7FFFFFFF)
 
+/*
 #define initDeleteWPacket(X) ((X).new_addr = 0)
 #define initInsertWPacket(X, ADDR) ((X).new_addr = ADDR)
 #define WPACKET_NOP ((clbpt_wpacket){.target = 0})
@@ -64,6 +73,7 @@ typedef struct _clbpt_property {
 #define isDeleteWPacket(X) ((X).new_addr == 0)
 #define isNopWPacket(X) ((X).target == 0)
 #define getKeyFromWPacket(X) (int)(((X).key << 1) & 0x80000000 | (X).key & 0x7FFFFFFF)
+*/
 
 __kernel void
 _clbptPacketSort(
@@ -413,7 +423,10 @@ _clbptSearch(
 		index_entry_high = node->num_entry - 1;
 		for (;;) {
 			index_entry_mid = (index_entry_low + index_entry_high) / 2;
-			if (key < getKeyFromEntry(node->entry[index_entry_mid])) {
+			if (index_entry_mid == node->num_entry - 1) {
+				break;
+			}
+			else if (key < getKeyFromEntry(node->entry[index_entry_mid])) {
 				index_entry_high = index_entry_mid - 1;
 			}
 			else if (key >= getKeyFromEntry(node->entry[index_entry_mid + 1])) {
