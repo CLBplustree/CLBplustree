@@ -7,7 +7,6 @@
 
 #include <stdint.h>
 #include <pthread.h>
-#define CL_USE_DEPRECATED_OPENCL_2_0_APIS 
 #ifdef __APPLE__
 #include <OpenCL/opencl.h>
 #else
@@ -33,6 +32,7 @@ struct _clbpt_platform {
 	cl_command_queue queue;
 	cl_program program;
 	cl_kernel *kernels;
+	cl_device_id *devices;
 };
 
 typedef struct _clbpt_property {

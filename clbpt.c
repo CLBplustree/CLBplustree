@@ -3,6 +3,8 @@
  */
  
 #include "clbpt.h"
+#include "clbpt_core.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
@@ -12,11 +14,41 @@
 #define CLBPT_PACKET_INSERT(x,y) (((( (clbpt_packet)(x) | 0x80000000 ) << 32 ) & 0xFFFFFFFF00000000 ) | (uint32_t)(y) )
 #define CLBPT_PACKET_DELETE(x) (((( (clbpt_packet)(x) | 0x80000000 ) << 32 ) & 0xFFFFFFFF00000000 ))
 
-int _clbptHandler(clbpt_tree tree)                                              {
+void _clbpt_load_program(clbpt_platform platform,char *filename)
+{
+   FILE *f = fopen(filename,"r");
+   cl_int err;
+   if(f==NULL)exit(-1);
+   fseek(f, 0, SEEK_END);
+   long fsize = ftell(f);
+   fseek(f, 0, SEEK_SET);
+   char *string = malloc(fsize + 1);
+   fread(string, fsize, 1, f);
+   string[fsize] = 0;
+   fclose(f);
+   const char *source = &string[0];
+   platform->program = clCreateProgramWithSource(platform->context, 1, &source, 0, &err);
+   if(err != 0)
+      printf("error load program : %d\n",err);
+   if(platform->program == NULL)
+      printf("error load program\n");
+   if((err = clBuildProgram( platform->program, 1, platform->devices, " -I /home/mangohot/KMA", 0, 0)) != CL_SUCCESS) 
+   {
+      printf("error build program : %d\n",err);
+      size_t len;
+      char *buffer;
+      clGetProgramBuildInfo(platform->program, platform->devices[0], CL_PROGRAM_BUILD_LOG, 0, NULL, &len);
+      buffer = calloc(sizeof(char),len);
+      clGetProgramBuildInfo(platform->program, platform->devices[0], CL_PROGRAM_BUILD_LOG, len, buffer, NULL);
+      printf("%s\n", buffer);
+   }
+}
+
+void * _clbptHandler(void *tree)                                                {
     while( 1 )                                                                  {
-        pthread_mutex_lock(&(tree->loop_mutex))                                 ;
-        _clbptSelectFromWaitBuffer(tree)                                        ;
-        _clbptHandleExecuteBuffer(tree)                                         ;}}
+        pthread_mutex_lock(&(((clbpt_tree)tree)->loop_mutex))                   ;
+        _clbptSelectFromWaitBuffer((clbpt_tree)tree)                            ;
+        _clbptHandleExecuteBuffer((clbpt_tree)tree)                             ;}}
 
 int _clbptLockWaitBuffer(clbpt_tree tree)                                       {
     int err = pthread_mutex_lock(&(tree->buffer_mutex))                         ;
@@ -61,11 +93,19 @@ int clbptCreatePlatform(
     size_t cb                                                                   ;
     dst_platform = malloc(sizeof(struct _clbpt_platform))                       ;
     dst_platform->context = context                                             ;
+    dst_platform->kernels = calloc(sizeof(cl_kernel),64)			;
     clGetContextInfo(context, CL_CONTEXT_DEVICES, 0, NULL, &cb)                 ;
     cl_device_id *devices = calloc( sizeof(cl_device_id),cb)                    ;
+    dst_platform->devices = devices;
     clGetContextInfo(context, CL_CONTEXT_DEVICES, cb, &devices[0], 0)           ;
     clGetDeviceInfo(devices[0], CL_DEVICE_NAME, 0, NULL, &cb)                   ;
-    dst_platform->queue = clCreateCommandQueue(context, devices[0], 0, &err)    ;
+    _clbpt_load_program(dst_platform,"clbpt.cl")				;
+    dst_platform->kernels[CLBPT_INITIALIZE] = clCreateKernel(dst_platform->program,"_clbptInitialize",&err);
+    dst_platform->queue = clCreateCommandQueueWithProperties(
+	context, 
+	devices[0], 
+	0, 
+	&err)    								;
     if(err != CL_SUCCESS || dst_platform->queue == 0)                           {
         clReleaseContext(context)                                               ;
         return err                                                              ;}

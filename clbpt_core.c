@@ -25,13 +25,13 @@ static size_t global_work_size;
 static size_t local_work_size = 256;	// get this value when initializing
 static uint32_t buf_size = CLBPT_BUF_SIZE;
 
-void _clbptSelectFromWaitBuffer(clbpt_tree tree)
+int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 {
 	unsigned int isEmpty = 1;
 
 	context = tree->platform->context;
 	queue = tree->platform->queue;
-	*kernels = tree->platform->kernels;
+	kernels = tree->platform->kernels;
 
 	// clmem initialize
 	static cl_mem isEmpty_d;
@@ -135,14 +135,16 @@ int _clbptInitialize(clbpt_tree tree)
 {
 	root = tree->root;
 	property = tree->property;
+	kernels = tree->platform->kernels;
 
 	// clmem initialize
 
 	// clmem allocation
-	property_d = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, 1 * sizeof(clbpt_property), tree->property, &err);
+	property_d = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, 1 * sizeof(clbpt_property), &tree->property, &err);
 
 	// kernel _clbptInitialize
 	kernel = kernels[CLBPT_INITIALIZE];
+	
 	err = clSetKernelArg(kernel, 0, sizeof(root), (void *)&root);
 	assert(err == 0);
 	err = clSetKernelArg(kernel, 1, sizeof(property_d), (void *)&property_d);
@@ -153,4 +155,5 @@ int _clbptInitialize(clbpt_tree tree)
 	// Initialize
 	err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
 	assert(err == 0);
+	return 0;
 }

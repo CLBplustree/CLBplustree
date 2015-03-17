@@ -14,7 +14,7 @@ typedef uint cpu_address_t;
 typedef ulong cpu_address_t;
 #endif
 
-typedef uint clbpt_key
+typedef uint clbpt_key;
 
 typedef struct _clbpt_entry {
 	clbpt_key key;
