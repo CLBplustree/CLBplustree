@@ -25,6 +25,9 @@ static size_t global_work_size;
 static size_t local_work_size = 256;	// get this value when initializing
 static uint32_t buf_size = CLBPT_BUF_SIZE;
 
+int insert_leaf(int32_t key, void *node_addr);
+int delete_leaf(int32_t key, void *node_addr);
+
 int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 {
 	unsigned int isEmpty = 1;
@@ -128,11 +131,44 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	tree->result_buf = (void **)clEnqueueMapBuffer(queue, result_buf_d, CL_TRUE, CL_MAP_READ, 0, buf_size * sizeof(void *), 0, NULL, NULL, &err);
 	assert(err == 0);
 
-	return CLBPT_STATUS_DONE;
+	// handle leaf nodes
+	int i;
+	clbpt_packet pkt;
+	int32_t key;
+	void *node_addr;
+	
+	for(i = 0; i < buf_size; i++)
+	{
+		pkt = execute_buf[i];
+		key = getKeyFromPacket(pkt);
+		node_addr = result_buf[i];
+
+		if (isSearchPacket(pkt))
+		{
+			;
+		}
+		else if (isRangePacket(pkt))
+		{
+			;
+		}
+		else if (isInsertPacket(pkt))
+		{
+			insert_leaf(key, node_addr);
+		}
+		else if (isDeletePacket(pkt))
+		{
+			delete_leaf(key, node_addr);
+		}
+	}
 }
 
 int _clbptInitialize(clbpt_tree tree)
 {
+	// create leaf node
+	tree->leaf = (clbpt_leaf_node *)malloc(1 * sizeof(clbpt_leaf_node));
+	tree->leaf->head = NULL;
+	tree->leaf->num_entry = 0;
+
 	root = tree->root;
 	property = tree->property;
 	kernels = tree->platform->kernels;
@@ -153,7 +189,34 @@ int _clbptInitialize(clbpt_tree tree)
 	assert(err == 0);
 
 	// Initialize
+	global_work_size = 1;
 	err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
+	assert(err == 0);	
+	tree->property = (clbpt_property)clEnqueueMapBuffer(queue, property_d, CL_TRUE, CL_MAP_READ, 0, sizeof(clbpt_property), 0, NULL, NULL, &err);
 	assert(err == 0);
-	return 0;
+
+	return CLBPT_STATUS_DONE;
+}
+
+int insert_leaf(int32_t key, void *node_addr)
+{
+	int i, existed;
+	clbpt_leaf_node *node = node_addr;
+
+	while(entry->next->record_ptr)
+	for(i = 0; i < node->num_entry; i++)
+	{
+		
+	}
+}
+
+int delete_leaf(int32_t key, void *node_addr)
+{
+	int i;
+	clbpt_leaf_node *node = node_addr;
+
+	for(i = 0; i < node->num_entry; i++)
+	{
+		
+	}
 }
