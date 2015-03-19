@@ -36,7 +36,7 @@ inline int half_f(int input)
 }
 
 int search_leaf(int32_t key, void *node_addr);
-int range_leaf(int32_t key, int32_t key_upper, node_addr);
+int range_leaf(int32_t key, int32_t key_upper, void *node_addr);
 int insert_leaf(int32_t key, void *node_addr);
 int delete_leaf(int32_t key, void *node_addr);
 
