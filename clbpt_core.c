@@ -300,7 +300,7 @@ int range_leaf(int32_t key, int32_t key_upper, void *node_addr)
 
 int insert_leaf(int32_t key, void *node_addr)
 {
-	int m, existed = 0;
+	int m, existed = 0, ORDER = CLBPT_ORDER;
 	clbpt_leaf_node *node_temp, *node = node_addr;
 	clbpt_leaf_entry *entry_temp, *entry = node->head;
 
@@ -340,7 +340,7 @@ int insert_leaf(int32_t key, void *node_addr)
 		else	// Need Split
 		{
 			node_temp = (clbpt_leaf_node *)malloc(sizeof(clbpt_leaf_node));
-			m = half_f(CLBPT_ORDER);
+			m = half_f(ORDER);
 			node->num_entry = m;
 			node_temp->num_entry = CLBPT_ORDER - m;
 
@@ -364,7 +364,7 @@ int insert_leaf(int32_t key, void *node_addr)
 
 int delete_leaf(int32_t key, void *node_addr)
 {
-	int m, existed = 0;
+	int m, existed = 0, ORDER = CLBPT_ORDER;
 	clbpt_leaf_node *node_temp, *node = node_addr;
 	clbpt_leaf_entry *entry_temp, *entry = node->head;
 
@@ -399,10 +399,10 @@ int delete_leaf(int32_t key, void *node_addr)
 		free(entry_temp);
 		node->num_entry -= 1;
 
-		if (node->num_entry - 1 < half_c(CLBPT_ORDER))	// Need Borrow or Merge
+		if (node->num_entry - 1 < half_c(ORDER))	// Need Borrow or Merge
 		{
 			if (node->next_node != NULL &&
-				node->next_node->num_entry - 1 < half_c(CLBPT_ORDER))	// Merge
+				node->next_node->num_entry - 1 < half_c(ORDER))	// Merge
 			{
 				node_temp = node->next_node;
 				node->num_entry += node->next_node->num_entry;
