@@ -153,7 +153,6 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	{
 		pkt = execute_buf[i];
 		key = getKeyFromPacket(pkt);
-		key_upper = getUpperKeyFromRangePacket(pkt);
 		node_addr = result_buf[i];
 
 		if (isSearchPacket(pkt))
@@ -162,6 +161,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 		}
 		else if (isRangePacket(pkt))
 		{
+			key_upper = getUpperKeyFromRangePacket(pkt);
 			result = range_leaf(key, key_upper, node_addr);
 		}
 		else if (isInsertPacket(pkt))

@@ -48,12 +48,13 @@ typedef struct _clbpt_int_node {
 	uint32_t num_entry;
 } clbpt_node;
 */
+typedef struct _clbpt_leaf_entry {
+	//uint8_t enable;
+	void *record_ptr;
+	struct _clbpt_leaf_entry *next;
+} clbpt_leaf_entry;
+
 typedef struct _clbpt_leaf_node {
-	typedef struct _clbpt_leaf_entry {
-		//uint8_t enable;
-		void *record_ptr;
-		struct _clbpt_leaf_entry *next;
-	} clbpt_leaf_entry;
 	clbpt_leaf_entry *head;
 	uint32_t num_entry;
 	struct _clbpt_leaf_node *next_node;
