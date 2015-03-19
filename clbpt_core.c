@@ -226,16 +226,16 @@ int search_leaf(int32_t key, void *node_addr)
 	clbpt_leaf_entry *entry = node->head;
 
 	if (entry != NULL &&
-		(int32_t)*(entry->record_ptr) == key)
+		*((int32_t *)entry->record_ptr) == key)
 	{
 		existed = 1;
 	}
 	else
 	{
 		while(entry->next != NULL &&
-			(int32_t)*(entry->next->record_ptr) < key)
+			*((int32_t *)entry->next->record_ptr) < key)
 		{
-			if ((int32_t)*(entry->next->record_ptr) == key)
+			if (*((int32_t *)entry->next->record_ptr) == key)
 			{
 				existed = 1;
 				break;
@@ -266,9 +266,9 @@ int range_leaf(int32_t key, int32_t key_upper, void *node_addr)
 	clbpt_leaf_entry *start, *end, *entry = node->head;
 
 	// find start
-	while(entry != NULL && (int32_t)*(entry->record_ptr) <= key_upper)
+	while(entry != NULL && *((int32_t *)entry->record_ptr) <= key_upper)
 	{
-		if ((int32_t)*(entry->record_ptr) >= key)
+		if (*((int32_t *)entry->record_ptr) >= key)
 		{
 			start = entry;
 			num_records += 1;
@@ -278,7 +278,7 @@ int range_leaf(int32_t key, int32_t key_upper, void *node_addr)
 	}
 
 	while(entry->next != NULL &&
-		(int32_t)*(entry->next->record_ptr) <= key_upper)
+		*((int32_t *)entry->next->record_ptr) <= key_upper)
 	{
 		num_records += 1;
 		entry = entry->next;
@@ -290,9 +290,9 @@ int range_leaf(int32_t key, int32_t key_upper, void *node_addr)
 		printf("RANGE SUCCESS: records: \n");
 		for(entry = start, i = num_records; i > 0; entry = entry->next, i--)
 		{
-			printf("%d ", *(entry->record_ptr));
+			printf("%d ", *((CLBPT_RECORD_TYPE *)entry->record_ptr));
 		}
-		printf("are inside the range[%d, %d]", *(start->record_ptr), *(end->record_ptr));
+		printf("are inside the range[%d, %d]", *((CLBPT_RECORD_TYPE *)start->record_ptr), *((CLBPT_RECORD_TYPE *)end->record_ptr));
 	}
 
 	return num_records;
@@ -305,16 +305,16 @@ int insert_leaf(int32_t key, void *node_addr)
 	clbpt_leaf_entry *entry_temp, *entry = node->head;
 
 	if (entry != NULL &&
-		(int32_t)*(entry->record_ptr) == key)
+		*((int32_t *)entry->record_ptr) == key)
 	{
 		existed = 1;
 	}
 	else
 	{
 		while(entry->next != NULL &&
-			(int32_t)*(entry->next->record_ptr) < key)
+			*((int32_t *)entry->next->record_ptr) < key)
 		{
-			if ((int32_t)*(entry->next->record_ptr) == key)
+			if (*((int32_t *)entry->next->record_ptr) == key)
 			{
 				existed = 1;
 				break;
@@ -333,7 +333,7 @@ int insert_leaf(int32_t key, void *node_addr)
 			entry_temp = entry->next;
 			entry->next = (clbpt_leaf_entry *)malloc(sizeof(clbpt_leaf_entry));
 			entry->next->record_ptr = (CLBPT_RECORD_TYPE *)malloc(sizeof(CLBPT_RECORD_TYPE));
-			*(entry->next->record_ptr) = key;
+			*((int32_t *)entry->next->record_ptr) = key;
 			entry->next->next = entry_temp;
 			node->num_entry += 1;
 		}
@@ -369,16 +369,16 @@ int delete_leaf(int32_t key, void *node_addr)
 	clbpt_leaf_entry *entry_temp, *entry = node->head;
 
 	if (entry != NULL &&
-		(int32_t)*(entry->record_ptr) == key)
+		*((int32_t *)entry->record_ptr) == key)
 	{
 		existed = 1;
 	}
 	else
 	{
 		while(entry->next != NULL &&
-			(int32_t)*(entry->next->record_ptr) < key)
+			*((int32_t *)entry->next->record_ptr) < key)
 		{
-			if ((int32_t)*(entry->next->record_ptr) == key)
+			if (*((int32_t *)entry->next->record_ptr) == key)
 			{
 				existed = 1;
 				break;
