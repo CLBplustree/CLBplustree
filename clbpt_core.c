@@ -151,9 +151,9 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	
 	for(i = 0; i < buf_size; i++)
 	{
-		pkt = execute_buf[i];
+		pkt = tree->execute_buf[i];
 		key = getKeyFromPacket(pkt);
-		node_addr = result_buf[i];
+		node_addr = tree->result_buf[i];
 
 		if (isSearchPacket(pkt))
 		{
@@ -208,8 +208,8 @@ int _clbptInitialize(clbpt_tree tree)
 	global_work_size = 1;
 	err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
 	assert(err == 0);	
-	tree->property = (clbpt_property)clEnqueueMapBuffer(queue, property_d, CL_TRUE, CL_MAP_READ, 0, sizeof(clbpt_property), 0, NULL, NULL, &err);
-	assert(err == 0);
+	//tree->property = (clbpt_property)clEnqueueMapBuffer(queue, property_d, CL_TRUE, CL_MAP_READ, 0, sizeof(clbpt_property), 0, NULL, NULL, &err);
+	//assert(err == 0);
 
 	return CLBPT_STATUS_DONE;
 }

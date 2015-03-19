@@ -40,14 +40,14 @@ typedef struct _clbpt_property {
 	void *root;
 	uint32_t level;
 } clbpt_property;
-/*
+
 typedef uint64_t clbpt_entry;
  
 typedef struct _clbpt_int_node {
 	clbpt_entry *entry;
 	uint32_t num_entry;
 } clbpt_node;
-*/
+
 typedef struct _clbpt_leaf_entry {
 	//uint8_t enable;
 	void *record_ptr;
