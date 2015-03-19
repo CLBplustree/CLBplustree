@@ -14,6 +14,7 @@
 #endif
 
 #define CLBPT_KEY_TYPE int
+#define CLBPT_RECORD_TYPE int
 
 #define CLBPT_BUF_SIZE 65536
 
@@ -39,22 +40,23 @@ typedef struct _clbpt_property {
 	void *root;
 	uint32_t level;
 } clbpt_property;
-
+/*
 typedef uint64_t clbpt_entry;
  
 typedef struct _clbpt_int_node {
 	clbpt_entry *entry;
 	uint32_t num_entry;
 } clbpt_node;
-
+*/
 typedef struct _clbpt_leaf_node {
-	struct _entry {
-		uint8_t enable;
+	typedef struct _clbpt_leaf_entry {
+		//uint8_t enable;
 		void *record_ptr;
-		struct _entry *next;
-	} *entry;
-	struct _entry *head;
+		struct _clbpt_leaf_entry *next;
+	} clbpt_leaf_entry;
+	clbpt_leaf_entry *head;
 	uint32_t num_entry;
+	struct _clbpt_leaf_node *next_node;
 } clbpt_leaf_node;
 
 typedef	uint64_t clbpt_packet;
