@@ -14,7 +14,7 @@ typedef uint cpu_address_t;
 typedef ulong cpu_address_t;
 #endif
 
-typedef uint clbpt_key
+typedef uint clbpt_key;
 
 typedef struct _clbpt_entry {
 	clbpt_key key;
@@ -38,15 +38,22 @@ typedef struct _clbpt_wpacket {
 } clbpt_wpacket;
 */
 
-typedef clbpt_entry clbpt_ins_pkt;
+typedef struct _clbpt_ins_pkt {
+	clbpt_int_node *target;
+	clbpt_entry entry;
+} clbpt_ins_pkt;
 
-typedef clbpt_key clbpt_del_pkt;
+typedef struct _clbpt_del_pkt {
+	clbpt_int_node *target;
+	clbpt_key key;
+} clbpt_del_pkt;
 
 typedef struct _clbpt_property {
 	uintptr_t root;
 	uint level;
 } clbpt_property;
 
+#define getKey(X) (int)(((X) << 1) & 0x80000000 | (X) & 0x7FFFFFFF)
 #define getKeyFromPacket(X) (int)(((X) >> 31) & 0x80000000 | ((X) >> 32) & 0x7FFFFFFF)
 #define PACKET_NOP (0x3FFFFFFF00000000L)
 #define isReadPacket(X) (!((uchar)((X) >> 63) & 0x1))
@@ -221,7 +228,7 @@ _clbptPacketSort(
 					CLK_ENQUEUE_FLAGS_NO_WAIT,
 					ndrange_1D(l_size, l_size),
 					^{
-						clbptPacketSort(execute, result_addr, execute_temp, result_addr_temp, less_index);
+						_clbptPacketSort(execute, result_addr, execute_temp, result_addr_temp, less_index);
 					 }
 				);
 			}
@@ -231,7 +238,7 @@ _clbptPacketSort(
 					CLK_ENQUEUE_FLAGS_NO_WAIT,
 					ndrange_1D(l_size, l_size),
 					^{
-						clbptPacketSort(execute + equal_index, result_addr + equal_index, execute_temp + equal_index, result_addr_temp + equal_index, num_execute - equal_index);
+						_clbptPacketSort(execute + equal_index, result_addr + equal_index, execute_temp + equal_index, result_addr_temp + equal_index, num_execute - equal_index);
 					 }
 				);
 			}
@@ -401,6 +408,33 @@ _clbptInitialize(
 	*(cpu_address_t *)(property->root) = host_root;
 }
 
+uint
+_binary_search(
+	clbpt_int_node *node,
+	int target_key
+	)
+{
+	int key;
+	uint index_entry_high, index_entry_low, index_entry_mid;
+	
+	for (;;) {
+		index_entry_mid = (index_entry_low + index_entry_high) / 2;
+		if (index_entry_mid == node->num_entry - 1) {
+			break;
+		}
+		else if (key < getKeyFromEntry(node->entry[index_entry_mid])) {
+			index_entry_high = index_entry_mid - 1;
+		}
+		else if (key >= getKeyFromEntry(node->entry[index_entry_mid + 1])) {
+			index_entry_low = index_entry_mid + 1;
+		}
+		else {
+			break;
+		}
+	}
+	return index_entry_low;
+}
+
 __kernel void
 _clbptSearch(
 	__global cpu_address_t *result,
@@ -411,60 +445,53 @@ _clbptSearch(
 {
 	uint gid = get_global_id(0);
 	int key;
-	uint index_entry_high, index_entry_low, index_entry_mid;
 	clbpt_int_node *node;
+	uint entry_index;
 	
 	if (gid >= buffer_size) return;
 	
 	key = getKeyFromPacket(execute[gid]);
 	node = (clbpt_int_node *)(property->root);
 	for (int i = 0; i < property->level - 1; i++) {
-		index_entry_low = 0;
-		index_entry_high = node->num_entry - 1;
-		for (;;) {
-			index_entry_mid = (index_entry_low + index_entry_high) / 2;
-			if (index_entry_mid == node->num_entry - 1) {
-				break;
-			}
-			else if (key < getKeyFromEntry(node->entry[index_entry_mid])) {
-				index_entry_high = index_entry_mid - 1;
-			}
-			else if (key >= getKeyFromEntry(node->entry[index_entry_mid + 1])) {
-				index_entry_low = index_entry_mid + 1;
-			}
-			else {
-				break;
-			}
-		}
-		node = (clbpt_int_node *)getChildFromEntry(node->entry[index_entry_mid]);
+		entry_index = _binary_search(node, key);
+		node = (clbpt_int_node *)getChildFromEntry(node->entry[entry_index]);
 	}
 	result[gid] = *((cpu_address_t *)node);
 }
 	
 __kernel void
-_clbptInitWPacketBuffer(
-	__global clbpt_wpacket *wpacket,
-	__global cpu_address_t *leaf_addr,	// 0 for delete w_packet
+_clbptInitInsertPacketBuffer(
+	__global clbpt_ins_pkt *ins,
+	__global cpu_address_t *addr,
 	uint buffer_size,
 	__global struct clheap *heap
 	)
 {
 	uint gid = get_global_id(0);
-	int key;
-	cpu_address_t addr;
 	cpu_address_t *new_alloc;
 	
-	if (gid >= buffer_size) return;
-	if ((addr = leaf_addr[gid]) == 0) {	// Delete W_packet
-		initDeleteWPacket(wpacket[gid]);
-	}
-	else {								// Insert W_packet
-		new_alloc = (cpu_address_t *)malloc(heap, sizeof(cpu_address_t));
-		*new_alloc = addr;
-		initInsertWPacket(wpacket[gid], (uintptr_t)new_alloc);
-	}
+	new_alloc = (cpu_address_t *)malloc(heap, sizeof(cpu_address_t));
+	*new_alloc = addr[gid];
+	ins[gid].entry.child = new_alloc;
 }
 
+__kernel void
+_clbptInitDeletePacketBuffer(
+	__global clbpt_del_pkt *del,
+	uint buffer_size,
+	__global struct clheap *heap
+	)
+{
+	uint gid = get_global_id(0);
+	clbpt_del_pkt del_pkt = del[gid];
+	clbpt_int_node *node = del_pkt.target;
+	uint entry_index;
+
+	entry_index = _binary_search(node, getKey(del_pkt.key));
+	free(heap, node->entry[entry_index].child);
+}
+
+/*
 void
 _clbptWPacketGroupHandler(
 	clbpt_wpacket *wpacket,
@@ -493,51 +520,68 @@ _clbptSplit(
 	clbpt_property *property,
 	uint level_proc
 );
+*/
 
 __kernel void
 _clbptWPacketBufferHandler(
-	__global clbpt_wpacket *wpacket,
-	uint num_wpacket,
+	__global clbpt_ins_pkt *ins,
+	uint num_ins,
+	__global clbpt_del_pkt *del,
+	uint num_del,
 	__global struct clheap *heap,
-	__global clbpt_property *property,
-	uint level_proc
+	__global clbpt_property *property
 	)
 {
-	int wpacket_sgroup_start;
-	uintptr_t prev_target, cur_target;
-	uintptr_t prev_parent, cur_parent;
-	uint wpacket_alloc = 0;
-	uint wpacket_group_count = 1;
-	
-	wpacket_sgroup_start = 0;
-	prev_target = wpacket[0].target;
-	prev_parent = ((clbpt_int_node *)(wpacket[0].target))->parent;
-	for (int i = 1; i < num_wpacket; i++) {
-		cur_target = wpacket[i].target;
-		cur_parent = ((clbpt_int_node *)(wpacket[i].target))->parent;
-		if (cur_parent != prev_parent) {
-			for (uint j = 0; j < 2 * wpacket_group_count; j++) {
-				wpacket[num_wpacket + wpacket_alloc + j] = WPACKET_NOP;
-			}
-			// enqueue_kernel
-			wpacket_sgroup_start = i;
-			wpacket_alloc += 2 * wpacket_group_count;
-			wpacket_group_count = 1;
-			prev_target = cur_target;
-			prev_parent = cur_parent;
+	uint ins_begin, ins_cur;
+	uint del_begin, del_cur;
+	uintptr_t cur_parent;
+	clk_event_t level_bar;
+
+	ins_cur = 0;
+	del_cur = 0;
+	while (ins_cur != num_ins || del_cur != num_del) {
+		// Define cur_target
+		if (ins_cur == num_ins) {
+			cur_parent = del[del_cur].target->parent;
 		}
-		else if (cur_target != prev_target) {
-			wpacket_group_count++;
-			prev_target = cur_target;
+		else if (del_cur == num_del) {
+			cur_parent = ins[ins_cur].target->parent;
 		}
+		else if (getKey(ins[ins_cur].entry.key) <
+			getKey(del[del_cur].key))
+		{
+			cur_parent = ins[ins_cur].target->parent;
+		}
+		else {
+			cur_parent = del[del_cur].target->parent;
+		}
+		// Set begin
+		ins_begin = ins_cur;
+		del_begin = del_cur;
+		// Find siblings in ins and del
+		for (; ins_cur != num_ins; ins_cur++) {
+			if (ins[ins_cur].target->parent != cur_parent) break;
+		}
+		for (; del_cur != num_del; del_cur++) {
+			if (del[del_cur].target->parent != cur_parent) break;
+		}
+		// Enqueue super group handler
+		enqueue_kernel(
+			get_default_queue(),
+			CLK_ENQUEUE_FLAGS_NO_WAIT,
+			ndrange_1D(CLBPT_ORDER, CLBPT_ORDER),
+			^{
+				_clbptWPacketSuperGroupHandler(
+					// Arguments
+				);
+			 }
+		);
 	}
-	for (uint j = 0; j < 2 * wpacket_group_count; j++) {
-		wpacket[num_wpacket + wpacket_alloc + j] = WPACKET_NOP;
-	}
-	// enqueue_kernel
-	
+	enqueue_marker(get_default_queue(), 0, NULL, &level_bar);
+	release_event(level_bar);
 }
 
+/*
 __kernel void
 _clbptWPacketSuperGroupHandler(
 	__global clbpt_wpacket *wpacket,
@@ -670,3 +714,4 @@ _clbptSplit(
 {
 
 }
+*/
