@@ -7,7 +7,6 @@
 
 #include <stdint.h>
 #include <pthread.h>
-#define CL_USE_DEPRECATED_OPENCL_2_0_APIS 
 #ifdef __APPLE__
 #include <OpenCL/opencl.h>
 #else
@@ -15,6 +14,7 @@
 #endif
 
 #define CLBPT_KEY_TYPE int
+#define CLBPT_RECORD_TYPE int
 
 #define CLBPT_BUF_SIZE 65536
 
@@ -33,6 +33,7 @@ struct _clbpt_platform {
 	cl_command_queue queue;
 	cl_program program;
 	cl_kernel *kernels;
+	cl_device_id *devices;
 };
 
 typedef struct _clbpt_property {
@@ -47,14 +48,16 @@ typedef struct _clbpt_int_node {
 	uint32_t num_entry;
 } clbpt_node;
 
+typedef struct _clbpt_leaf_entry {
+	//uint8_t enable;
+	void *record_ptr;
+	struct _clbpt_leaf_entry *next;
+} clbpt_leaf_entry;
+
 typedef struct _clbpt_leaf_node {
-	struct _entry {
-		uint8_t enable;
-		void *record_ptr;
-		struct _entry *next;
-	} *entry;
-	struct _entry *head;
+	clbpt_leaf_entry *head;
 	uint32_t num_entry;
+	struct _clbpt_leaf_node *next_node;
 } clbpt_leaf_node;
 
 typedef	uint64_t clbpt_packet;
