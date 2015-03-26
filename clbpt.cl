@@ -86,6 +86,28 @@ typedef struct _clbpt_property {
 */
 
 __kernel void
+_clbptWPacketBufferHandler(
+        __global clbpt_ins_pkt *ins,
+        uint num_ins,
+        __global clbpt_del_pkt *del,
+        uint num_del,
+        __global struct clheap *heap,
+        __global clbpt_property *property,
+        uint level_proc
+        );
+
+__kernel void
+_clbptWPacketCompact(
+        __global clbpt_ins_pkt *ins,
+        uint num_ins,
+        __global clbpt_del_pkt *del,
+        uint num_del,
+        __global struct clheap *heap,
+        __global clbpt_property *property,
+        uint level_proc_old
+        );
+
+__kernel void
 _clbptPacketSort(
 			__global clbpt_packet *execute,
 			__global cpu_address_t *result_addr,
@@ -505,7 +527,7 @@ _clbptWPacketInit(
 				CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
 				ndrange_1D(CLBPT_ORDER, CLBPT_ORDER),
 				^{
-					_clbptWPacketBufferHandler(ins,	num_ins, del, num_del, 
+					 _clbptWPacketBufferHandler(ins,	num_ins, del, num_del, 
 						heap, property, level_proc);
 				 }
 			);
@@ -654,7 +676,7 @@ _clbptWPacketCompact(
 		valid = isWPacketValid(del_proc = del[old_del_i]);
 		work_group_barrier(0);
 		id = work_group_scan_exclusive_add(valid);
-		ins[id_base + id] = del_proc;
+		del[id_base + id] = del_proc;
 		work_group_barrier(0);
 		if (gid == grsize - 1) {
 			id_base += id + 1;
