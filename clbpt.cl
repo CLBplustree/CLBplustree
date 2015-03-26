@@ -7,6 +7,7 @@
 // Temporary. Replace this by compiler option later.
 #define CLBPT_ORDER 8
 #define CPU_BITNESS 64
+#define MAX_LOCAL_SIZE 256
 
 #if CPU_BITNESS == 32
 typedef uint cpu_address_t;
@@ -71,6 +72,8 @@ typedef struct _clbpt_property {
 #define isNullEntry(X) ((X).child == 0)
 
 #define getParentKeyFromNode(X) (int)((((X).parent_key) << 1) & 0x80000000 | ((X).parent_key) & 0x7FFFFFFF)
+
+#define isWPacketValid(X) ((X).target != 0)
 
 /*
 #define initDeleteWPacket(X) ((X).new_addr = 0)
@@ -459,68 +462,59 @@ _clbptSearch(
 	result[gid] = *((cpu_address_t *)node);
 }
 	
+/**
+ *	This is the only kernel function for host to call.
+ *	The global size must equal to or greater than num_ins and num_del.
+ */
 __kernel void
-_clbptInitInsertPacketBuffer(
+_clbptWPacketInit(						
 	__global clbpt_ins_pkt *ins,
 	__global cpu_address_t *addr,
-	uint buffer_size,
-	__global struct clheap *heap
-	)
-{
-	uint gid = get_global_id(0);
-	cpu_address_t *new_alloc;
-	
-	new_alloc = (cpu_address_t *)malloc(heap, sizeof(cpu_address_t));
-	*new_alloc = addr[gid];
-	ins[gid].entry.child = new_alloc;
-}
-
-__kernel void
-_clbptInitDeletePacketBuffer(
+	uint num_ins,
 	__global clbpt_del_pkt *del,
-	uint buffer_size,
-	__global struct clheap *heap
+	uint num_del,
+	__global struct clheap *heap,
+	__global clbpt_property *property
 	)
 {
 	uint gid = get_global_id(0);
-	clbpt_del_pkt del_pkt = del[gid];
-	clbpt_int_node *node = del_pkt.target;
-	uint entry_index;
 
-	entry_index = _binary_search(node, getKey(del_pkt.key));
-	free(heap, node->entry[entry_index].child);
+	// Initialize Insert Packet
+	if (gid < num_ins) {
+		cpu_address_t *new_alloc;
+
+		new_alloc = (cpu_address_t *)malloc(heap, sizeof(cpu_address_t));
+		*new_alloc = addr[gid];
+		ins[gid].entry.child = new_alloc;
+	}
+	// Initialize Delete Packet
+	if (gid < num_del) {
+		clbpt_del_pkt del_pkt = del[gid];
+		clbpt_int_node *node = del_pkt.target;
+		uint entry_index;
+
+		entry_index = _binary_search(node, getKey(del_pkt.key));
+		free(heap, node->entry[entry_index].child);
+	}
+	// Enqueue _clbptWPacketBufferHandler
+	if (gid == 0) {
+		uint level_proc = property->level - 2;
+		if (level_proc >= 0) {
+			enqueue_kernel(
+				get_default_queue(),
+				CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
+				ndrange_1D(CLBPT_ORDER, CLBPT_ORDER),
+				^{
+					_clbptWPacketBufferHandler(ins,	num_ins, del, num_del, 
+						heap, property, level_proc);
+				 }
+			);
+		} 
+		else {
+			// Enqueue level up procedure
+		}
+	}
 }
-
-/*
-void
-_clbptWPacketGroupHandler(
-	clbpt_wpacket *wpacket,
-	uint num_wpacket_in_group,
-	clbpt_wpacket *propagate,
-	uint *top_propagate,
-	struct clheap *heap,
-	clbpt_property *property,
-	uint level_proc
-);
-void
-_clbptMerge(
-	clbpt_int_node *target,
-	clbpt_wpacket *propagate,
-	uint *top_propagate,
-	struct clheap *heap,
-	clbpt_property *property,
-	uint level_proc
-);
-void
-_clbptSplit(
-	clbpt_int_node *target,
-	clbpt_wpacket *propagate,
-	uint *top_propagate,
-	struct clheap *heap,
-	clbpt_property *property,
-	uint level_proc
-);
-*/
 
 __kernel void
 _clbptWPacketBufferHandler(
@@ -529,56 +523,162 @@ _clbptWPacketBufferHandler(
 	__global clbpt_del_pkt *del,
 	uint num_del,
 	__global struct clheap *heap,
-	__global clbpt_property *property
+	__global clbpt_property *property,
+	uint level_proc
 	)
 {
-	uint ins_begin, ins_cur;
-	uint del_begin, del_cur;
-	uintptr_t cur_parent;
+	uint gid = get_global_id(0);
+	__local uint ins_begin, del_begin;
+	__local uint num_ins_sgroup, num_del_sgroup;
+	__local uintptr_t cur_parent;
 	clk_event_t level_bar;
 
-	ins_cur = 0;
-	del_cur = 0;
-	while (ins_cur != num_ins || del_cur != num_del) {
+	if (gid == 0) {
+		ins_begin = 0;
+		del_begin = 0;
+	}
+	work_group_barrier(CLK_LOCAL_MEM_FENCE);
+	while (ins_begin != num_ins || del_begin != num_del) {
 		// Define cur_target
-		if (ins_cur == num_ins) {
-			cur_parent = del[del_cur].target->parent;
+		if (gid == 0) {
+			if (ins_begin == num_ins) {
+				cur_parent = del[del_begin].target->parent;
+			}
+			else if (del_begin== num_del) {
+				cur_parent = ins[ins_begin].target->parent;
+			}
+			else if (getKey(ins[ins_begin].entry.key) <
+				getKey(del[del_begin].key))
+			{
+				cur_parent = ins[ins_begin].target->parent;
+			}
+			else {
+				cur_parent = del[del_begin].target->parent;
+			}
+			num_ins_sgroup = 0;
+			num_del_sgroup = 0;
 		}
-		else if (del_cur == num_del) {
-			cur_parent = ins[ins_cur].target->parent;
-		}
-		else if (getKey(ins[ins_cur].entry.key) <
-			getKey(del[del_cur].key))
-		{
-			cur_parent = ins[ins_cur].target->parent;
-		}
-		else {
-			cur_parent = del[del_cur].target->parent;
-		}
-		// Set begin
-		ins_begin = ins_cur;
-		del_begin = del_cur;
+		work_group_barrier(CLK_LOCAL_MEM_FENCE);
 		// Find siblings in ins and del
-		for (; ins_cur != num_ins; ins_cur++) {
-			if (ins[ins_cur].target->parent != cur_parent) break;
+		if (ins_begin + gid < num_ins &&
+			ins[ins_begin + gid].target->parent == cur_parent)
+		{
+			if (ins_begin + gid + 1 == num_ins ||
+				ins[ins_begin + gid + 1].target->parent != cur_parent)
+			{
+				num_ins_sgroup = gid + 1;
+			}
 		}
-		for (; del_cur != num_del; del_cur++) {
-			if (del[del_cur].target->parent != cur_parent) break;
+		if (del_begin + gid < num_del &&
+			del[del_begin + gid].target->parent == cur_parent)
+		{
+			if (del_begin + gid + 1 == num_del ||
+				del[del_begin + gid + 1].target->parent != cur_parent)
+			{
+				num_del_sgroup = gid + 1;
+			}
 		}
+		work_group_barrier(CLK_LOCAL_MEM_FENCE);
 		// Enqueue super group handler
+		if (gid == 0) {
+			enqueue_kernel(
+				get_default_queue(),
+				CLK_ENQUEUE_FLAGS_NO_WAIT,
+				ndrange_1D(CLBPT_ORDER, CLBPT_ORDER),
+				^{
+					_clbptWPacketSuperGroupHandler(
+						// Arguments
+					);
+				 }
+			);
+			ins_begin += num_ins_sgroup;
+			del_begin += num_del_sgroup;
+		}
+		work_group_barrier(CLK_LOCAL_MEM_FENCE);
+	}
+	if (gid == 0) {
+		enqueue_marker(get_default_queue(), 0, NULL, &level_bar);
+		release_event(level_bar);
 		enqueue_kernel(
 			get_default_queue(),
 			CLK_ENQUEUE_FLAGS_NO_WAIT,
-			ndrange_1D(CLBPT_ORDER, CLBPT_ORDER),
+			ndrange_1D(MAX_LOCAL_SIZE, MAX_LOCAL_SIZE),
 			^{
-				_clbptWPacketSuperGroupHandler(
-					// Arguments
-				);
+				_clbptWPacketCompact(ins, num_ins, del, num_del, heap,
+					property, level_proc);
 			 }
 		);
 	}
-	enqueue_marker(get_default_queue(), 0, NULL, &level_bar);
-	release_event(level_bar);
+}
+
+__kernel void
+_clbptWPacketCompact(
+	__global clbpt_ins_pkt *ins,
+	uint num_ins,
+	__global clbpt_del_pkt *del,
+	uint num_del,
+	__global struct clheap *heap,
+	__global clbpt_property *property,
+	uint level_proc_old
+	)
+{
+	uint gid = get_global_id(0);
+	uint grsize = get_local_size(0);
+	int valid, id;
+	__local id_base;
+	clbpt_ins_pkt ins_proc;
+	clbpt_del_pkt del_proc;
+
+	// Compace Insert Packet List
+	if (gid == 0) {
+		id_base = 0;
+	}
+	work_group_barrier(CLK_LOCAL_MEM_FENCE);
+	for (uint old_ins_i = gid; old_ins_i < num_ins; old_ins_i += grsize) {
+		valid = isWPacketValid(ins_proc = ins[old_ins_i]);
+		work_group_barrier(0);
+		id = work_group_scan_exclusive_add(valid);
+		ins[id_base + id] = ins_proc;
+		work_group_barrier(0);
+		if (gid == grsize - 1) {
+			id_base += id + 1;
+		}
+		work_group_barrier(CLK_LOCAL_MEM_FENCE);
+	}
+	// Compace Delete Packet List
+	if (gid == 0) {
+		id_base = 0;
+	}
+	work_group_barrier(CLK_LOCAL_MEM_FENCE);
+	for (uint old_del_i = gid; old_del_i < num_del; old_del_i += grsize) {
+		valid = isWPacketValid(del_proc = del[old_del_i]);
+		work_group_barrier(0);
+		id = work_group_scan_exclusive_add(valid);
+		ins[id_base + id] = del_proc;
+		work_group_barrier(0);
+		if (gid == grsize - 1) {
+			id_base += id + 1;
+		}
+		work_group_barrier(CLK_LOCAL_MEM_FENCE);
+	}
+	// Enqueue _clbptWPacketBufferHandler
+	if (gid == 0) {
+		uint level_proc = level_proc_old - 1;
+		if (level_proc >= 0) {
+			enqueue_kernel(
+				get_default_queue(),
+				CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
+				ndrange_1D(CLBPT_ORDER, CLBPT_ORDER),
+				^{
+					_clbptWPacketBufferHandler(ins,	num_ins, del, num_del, 
+						heap, property, level_proc);
+				 }
+			);
+		} 
+		else {
+			// Enqueue level up procedure
+		}
+	}
 }
 
 /*
