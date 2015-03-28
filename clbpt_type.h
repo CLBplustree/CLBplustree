@@ -49,7 +49,6 @@ typedef struct _clbpt_int_node {
 } clbpt_node;
 
 typedef struct _clbpt_leaf_entry {
-	//uint8_t enable;
 	void *record_ptr;
 	struct _clbpt_leaf_entry *next;
 } clbpt_leaf_entry;
@@ -62,7 +61,7 @@ typedef struct _clbpt_leaf_node {
 
 typedef	uint64_t clbpt_packet;
 
-typedef struct _clbpt_platform * clbpt_platform;
+typedef struct _clbpt_platform *clbpt_platform;
  
 struct _clbpt_tree {
 	clbpt_platform platform;
@@ -88,6 +87,6 @@ struct _clbpt_tree {
 	clbpt_node *root;
 };
 
-typedef struct _clbpt_tree * clbpt_tree;
+typedef struct _clbpt_tree *clbpt_tree;
 
 #endif
