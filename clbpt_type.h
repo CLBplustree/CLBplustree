@@ -34,6 +34,7 @@ struct _clbpt_platform {
 	cl_program program;
 	cl_kernel *kernels;
 	cl_device_id *devices;
+	int num_device;		// MangoKing forgot to use this one ?
 };
 
 typedef struct _clbpt_property {

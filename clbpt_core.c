@@ -18,11 +18,12 @@ static cl_mem property_d;
 static clbpt_node *root;
 
 static cl_int err;
+static size_t cb;
 static cl_mem wait_buf_d, execute_buf_d, result_buf_d;
 static cl_mem execute_buf_d_temp, result_buf_d_temp;
 
 static size_t global_work_size;
-static size_t local_work_size = 256;	// get this value when initializing
+static size_t local_work_size = 256;	// get this value in _clbptInitialize
 static uint32_t buf_size = CLBPT_BUF_SIZE;
 
 int half_c(int input)
@@ -180,6 +181,14 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 
 int _clbptInitialize(clbpt_tree tree)
 {
+	// get CL_DEVICE_MAX_WORK_ITEM_SIZES	
+	size_t max_work_item_sizes[3];
+	err = clGetDeviceInfo(tree->platform->devices[0], CL_DEVICE_MAX_WORK_ITEM_SIZES, 0, NULL, &cb);
+	assert(err == 0);
+	err = clGetDeviceInfo(devices[i], CL_DEVICE_MAX_WORK_ITEM_SIZES, cb, &max_work_item_sizes[0], NULL);
+	assert(err == 0);
+	local_work_size = max_work_item_sizes[0];
+
 	// create leaf node
 	tree->leaf = (clbpt_leaf_node *)malloc(1 * sizeof(clbpt_leaf_node));
 	tree->leaf->head = NULL;
@@ -217,6 +226,30 @@ int _clbptInitialize(clbpt_tree tree)
 
 int _clbptReleaseLeaf(clbpt_tree tree)
 {
+	clbpt_leaf_node *leaf = tree->leaf;
+	clbpt_leaf_node *node;
+	clbpt_leaf_entry *entry;
+
+	// free all entries
+	while(leaf->head != NULL)
+	{
+		entry = leaf->head->next;
+		free(leaf->head->record_ptr);
+		leaf->head->next = NULL;
+		leaf->head = entry;
+	}
+	
+	// free all nodes
+	while(leaf != NULL)
+	{
+		node = leaf->next_node;
+		leaf->head == NULL;
+		leaf->num_entry = 0;
+		leaf->next_node = NULL;
+		free(leaf);
+		leaf = node;
+	}
+
 	return CLBPT_STATUS_DONE;
 }
 
