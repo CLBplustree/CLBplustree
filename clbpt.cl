@@ -657,22 +657,40 @@ _clbptWPacketCompact(
 
 	// Compace Insert Packet List
 	id_base = 0;
-	for (uint old_ins_i = gid; old_ins_i < num_ins; old_ins_i += grsize) {
-		valid = isWPacketValid(ins_proc = ins[old_ins_i]);
+	for (uint old_ins_i_base = 0; old_ins_i_base < num_ins; old_ins_i_base += grsize) {
+		uint old_ins_i = old_ins_i_base + gid;
+		if (old_ins_i < num_ins) {
+			valid = isWPacketValid(ins_proc = ins[old_ins_i]);
+		}
+		else {
+			valid = 0;
+		}
 		work_group_barrier(0);
 		id = work_group_scan_exclusive_add(valid);
-		ins[id_base + id] = ins_proc;
+		if (valid) {
+			ins[id_base + id] = ins_proc;
+		}
 		work_group_barrier(0);
 		id_base += work_group_broadcast(id, grsize - 1) + 1;
 	}
 	num_ins = id_base;
 	// Compace Delete Packet List
 	id_base = 0;
-	for (uint old_del_i = gid; old_del_i < num_del; old_del_i += grsize) {
-		valid = isWPacketValid(del_proc = del[old_del_i]);
+	for (uint old_del_i_base = 0; old_del_i_base < num_del; 
+		old_del_i_base += grsize) 
+	{
+		uint old_del_i = old_del_i_base + gid;
+		if (old_del_i < num_del) {
+			valid = isWPacketValid(del_proc = del[old_del_i]);
+		}
+		else {
+			valid = 0;
+		}
 		work_group_barrier(0);
 		id = work_group_scan_exclusive_add(valid);
-		del[id_base + id] = del_proc;
+		if (valid) {
+			del[id_base + id] = del_proc;
+		}
 		work_group_barrier(0);
 		id_base += work_group_broadcast(id, grsize - 1) + 1;
 	}
