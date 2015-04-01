@@ -37,17 +37,24 @@ struct _clbpt_platform {
 	int num_device;		// MangoKing forgot to use this one ?
 };
 
-typedef struct _clbpt_property {
-	void *root;
-	uint32_t level;
-} clbpt_property;
-
 typedef uint64_t clbpt_entry;
  
 typedef struct _clbpt_int_node {
 	clbpt_entry *entry;
 	uint32_t num_entry;
-} clbpt_node;
+	uint32_t *parent;
+	uint32_t parent_key;
+} clbpt_int_node;
+
+typedef struct _clbpt_ins_pkt {
+	clbpt_int_node *target;
+	clbpt_entry entry;
+} clbpt_ins_pkt;
+
+typedef struct _clbpt_del_pkt {
+	clbpt_int_node *target;
+	int32_t key;
+} clbpt_del_pkt;
 
 typedef struct _clbpt_leaf_entry {
 	void *record_ptr;

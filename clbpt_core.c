@@ -12,6 +12,11 @@ static cl_command_queue queue;
 static cl_kernel *kernels;
 static cl_kernel kernel;
 
+static clbpt_ins_pkt *ins;
+static uint32_t num_ins;
+static clbpt_del_pkt *del;
+static uint32_t num_del;
+
 static clbpt_property property;
 static cl_mem property_d;
 
@@ -26,21 +31,12 @@ static size_t global_work_size;
 static size_t local_work_size = 256;	// get this value in _clbptInitialize
 static uint32_t buf_size = CLBPT_BUF_SIZE;
 
-int half_c(int input)
-{
-	return (input + 1) / 2;
-}
-
-int half_f(int input)
-{
-	return input / 2;
-}
 
 int search_leaf(int32_t key, void *node_addr);
 int range_leaf(int32_t key, int32_t key_upper, void *node_addr);
 int insert_leaf(int32_t key, void *node_addr);
 int delete_leaf(int32_t key, void *node_addr);
-void show_leaf(clbpt_leaf_node *leaf)	// function for testing
+void show_leaf(clbpt_leaf_node *leaf);	// function for testing
 
 int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 {
@@ -103,7 +99,7 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 
 	// PacketSort
 	kernel = kernels[CLBPT_PACKET_SORT];
-	global_work_size = 256;
+	global_work_size = local_work_size;
 	err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
 	assert(err == 0);
 	tree->execute_buf = (clbpt_packet *)clEnqueueMapBuffer(queue, execute_buf_d, CL_TRUE, CL_MAP_READ, 0, buf_size * sizeof(clbpt_packet), 0, NULL, NULL, &err);
@@ -195,6 +191,12 @@ int _clbptInitialize(clbpt_tree tree)
 	tree->leaf->num_entry = 0;
 	tree->leaf->next_node = NULL;
 
+	// create ins, del pkt buffer
+	ins = (clbpt_ins_pkt *)malloc(sizeof(clbpt_ins_pkt) * buf_size/2);
+	num_ins = 0;
+	del = (clbpt_del_pkt *)malloc(sizeof(clbpt_del_pkt) * buf_size/2);
+	num_del = 0;
+
 	root = tree->root;
 	property = tree->property;
 	kernels = tree->platform->kernels;
@@ -249,6 +251,10 @@ int _clbptReleaseLeaf(clbpt_tree tree)
 		free(leaf);
 		leaf = node;
 	}
+
+	// free ins, del pkt buffer
+	free(ins);
+	free(del);
 
 	return CLBPT_STATUS_DONE;
 }
@@ -391,7 +397,11 @@ int insert_leaf(int32_t key, void *node_addr)
 			}
 			node_temp->head = entry_temp;
 			node->next_node = node_temp;
+
 			// insert entry_temp to internal node
+			ins[num_ins].target = node_temp;
+			ins[num_ins].entry = *entry_temp;
+			num_ins++;
 		}
 	}
 	else	// No Insert
@@ -437,7 +447,6 @@ int delete_leaf(int32_t key, void *node_addr)	// not sure is it able to borrow y
 		{
 			node->head = entry->next;
 		}
-
 		free(entry_temp->record_ptr);
 		entry_temp->next = NULL;
 		free(entry_temp);
@@ -452,10 +461,15 @@ int delete_leaf(int32_t key, void *node_addr)	// not sure is it able to borrow y
 				node_temp = node->next_node;
 				node->num_entry += node->next_node->num_entry;
 				node->next_node = node_temp->next_node;
+
+				// delete entry_temp to internal node
+				del[num_del].target = node_temp;
+				del[num_del].key = *((int32_t *)node_temp->head->record_ptr);
+				num_del++;
+
 				node_temp->head = NULL;
 				node_temp->next_node = NULL;
 				free(node_temp);
-				// delete entry_temp to internal node 
 			}
 			else if (node->next_node != NULL)	// Borrow
 			{
