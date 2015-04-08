@@ -5,7 +5,8 @@
 #include "kma.cl"
 
 // Temporary. Replace this by compiler option later.
-#define CLBPT_ORDER 8
+#define CLBPT_ORDER 128		// Should be less than or equal to half
+							// of MAX_LOCAL_SIZE
 #define CPU_BITNESS 64
 #define MAX_LOCAL_SIZE 256
 
@@ -75,6 +76,9 @@ typedef struct _clbpt_property {
 
 #define isWPacketValid(X) ((X).target != 0)
 
+#define half_c(X) (((X) + 1) / 2)
+#define half_f(X) ((X) / 2)
+
 /*
 #define initDeleteWPacket(X) ((X).new_addr = 0)
 #define initInsertWPacket(X, ADDR) ((X).new_addr = ADDR)
@@ -106,6 +110,26 @@ _clbptWPacketCompact(
         __global clbpt_property *property,
         uint level_proc_old
         );
+
+__kernel void
+_clbptWPacketSuperGroupHandler(
+	__local clbpt_entry *proc_list,
+	__global clbpt_ins_pkt *ins,
+	uint num_ins,
+	__global clbpt_del_pkt *del,
+	uint num_del,
+	__global struct clheap *heap
+	);
+
+void
+_clbptWPacketGroupHandler(
+	__local clbpt_entry *proc_list,
+	__global clbpt_ins_pkt *ins,
+	uint num_ins,
+	__global clbpt_del_pkt *del,
+	uint num_del,
+	__global struct clheap *heap
+	);
 
 __kernel void
 _clbptPacketSort(
@@ -611,11 +635,17 @@ _clbptWPacketBufferHandler(
 				get_default_queue(),
 				CLK_ENQUEUE_FLAGS_NO_WAIT,
 				ndrange_1D(CLBPT_ORDER, CLBPT_ORDER),
-				^{
+				^(__local void *proc_list){
 					_clbptWPacketSuperGroupHandler(
-						// Arguments
+						proc_list,
+						ins + ins_begin,
+						num_ins_sgroup,
+						del + del_begin,
+						num_del_sgroup,
+						heap
 					);
-				 }
+				 },
+				2 * CLBPT_ORDER * sizeof(clbpt_entry)
 			);
 		}
 		work_group_barrier(0);
@@ -713,6 +743,198 @@ _clbptWPacketCompact(
 			// Enqueue level up procedure
 		}
 	}
+}
+
+__kernel void
+_clbptWPacketSuperGroupHandler(
+	__local clbpt_entry *proc_list,
+	__global clbpt_ins_pkt *ins,
+	uint num_ins,
+	__global clbpt_del_pkt *del,
+	uint num_del,
+	__global struct clheap *heap
+	)
+{
+	uint gid = get_global_id(0);
+	uint ins_begin, del_begin;
+	uint num_ins_group, num_del_group;
+	uint is_in_group;
+	uintptr_t cur_target;
+	clk_event_t level_bar;
+
+	ins_begin = 0;
+	del_begin = 0;
+	while (ins_begin != num_ins || del_begin != num_del) {
+		// Define cur_target
+		if (gid == 0) {
+			if (ins_begin == num_ins) {
+				cur_target = (uintptr_t)(del[del_begin].target);
+			}
+			else if (del_begin== num_del) {
+				cur_target = (uintptr_t)(ins[ins_begin].target);
+			}
+			else if (getKey(ins[ins_begin].entry.key) <
+				getKey(del[del_begin].key))
+			{
+				cur_target = (uintptr_t)(ins[ins_begin].target);
+			}
+			else {
+				cur_target = (uintptr_t)(del[del_begin].target);
+			}
+		}
+		work_group_barrier(0);
+		cur_target = work_group_broadcast(cur_target, 0);
+		// Find siblings in ins and del
+		if (ins_begin + gid < num_ins) {
+			if ((uintptr_t)(ins[ins_begin + gid].target) == cur_target) {
+				is_in_group = 1;
+			}
+			else {
+				is_in_group = 0;
+			}
+		}
+		else {
+			is_in_group = 0;
+		}
+		work_group_barrier(0);
+		num_ins_group = work_group_reduce_add(is_in_group);
+		if (del_begin + gid < num_del) {
+			if ((uintptr_t)(del[del_begin + gid].target) == cur_target) {
+				is_in_group = 1;
+			}
+			else {
+				is_in_group = 0;
+			}
+		}
+		else {
+			is_in_group = 0;
+		}
+		work_group_barrier(0);
+		num_del_group = work_group_reduce_add(is_in_group);
+		_clbptWPacketGroupHandler(proc_list, ins, num_ins, del, num_del, heap);
+		ins_begin += num_ins_group;
+		del_begin += num_del_group;
+	}
+}
+
+void
+_clbptWPacketGroupHandler(
+	__local clbpt_entry *proc_list,
+	__global clbpt_ins_pkt *ins,
+	uint num_ins,
+	__global clbpt_del_pkt *del,
+	uint num_del,
+	__global struct clheap *heap
+	)
+{
+	uint gid = get_global_id(0);
+	clbpt_int_node *target;
+
+	// Clear proc_list
+	proc_list[gid] = ENTRY_NULL;
+	proc_list[CLBPT_ORDER + gid] = ENTRY_NULL;
+	// Copy the target node into proc_list
+	if (num_ins != 0) {
+		target = (clbpt_int_node *)(ins[0].target);
+	}
+	else {
+		target = (clbpt_int_node *)(del[0].target);
+	}
+	if (gid < target->num_entry) {
+		proc_list[gid] = target->entry[gid];
+	}
+	// Delete
+	if (gid < num_del) {
+		int target_key;
+
+		target_key = getKey(del[gid].key);
+		for (uint i = 1; i < 2 * CLBPT_ORDER; i++) {
+			if (getKey(proc_list[i].key) == target_key) {
+				proc_list[i] = ENTRY_NULL;
+			}
+		}
+	}
+	work_group_barrier(CLK_LOCAL_MEM_FENCE);
+	// Insert
+	if (gid < num_ins) {
+		proc_list[CLBPT_ORDER + gid] = ins[gid].entry;
+	}
+	if (gid < 2 * CLBPT_ORDER) {
+		uint bitonic_max_level, offset, local_offset;
+		size_t exchg_index;
+		clbpt_entry temp1, temp2;
+		
+		for (bitonic_max_level = 1; bitonic_max_level < 2 * CLBPT_ORDER; 
+			bitonic_max_level <<= 1)
+		{
+			if ((local_offset = gid & ((bitonic_max_level << 1) - 1))
+				< bitonic_max_level)
+			{
+				if ((getKey((temp1 = proc_list[gid]).key) > 
+					getKey((temp2 = proc_list[exchg_index = gid + 
+						((bitonic_max_level - local_offset) << 1) - 1]).key) ||
+					temp1.child == NULL) && exchg_index < CLBPT_ORDER * 2) 
+				{
+					proc_list[gid] = temp2;
+					proc_list[exchg_index] = temp1;
+				}
+			}
+			work_group_barrier(CLK_LOCAL_MEM_FENCE);
+			for (offset = (bitonic_max_level >> 1); offset != 0; offset >>= 1) {
+				if ((gid & ((offset << 1) - 1)) < offset) {
+					if ((getKey((temp1 = proc_list[gid]).key) > 
+						getKey((temp2 = 
+							proc_list[exchg_index = gid + offset]).key) ||
+						temp1.child == NULL) && exchg_index < CLBPT_ORDER * 2)
+					{
+						proc_list[gid] = temp2;
+						proc_list[exchg_index] = temp1;
+					}
+				}
+				work_group_barrier(CLK_LOCAL_MEM_FENCE);
+			}
+		}
+	}
+	// Count num_entry
+	uint proc_num_entry;
+	{
+		uint valid = 0;
+		if (gid < 2 * CLBPT_ORDER && proc_list[gid].child != NULL) {
+			valid = 1;
+		}
+		proc_num_entry = work_group_reduce_add(valid);
+	}
+
+	// Locate on Parent Node
+	clbpt_int_node *parent;
+	int target_branch_key;
+	uint target_branch_index;
+	clbpt_int_node *sibling;
+
+	parent = (clbpt_int_node *)(target->parent);
+	target_branch_key = target->parent_key;
+	if (gid == 0) {
+		target_branch_index = _binary_search(parent, target_branch_key);
+	}
+	target_branch_index = work_group_broadcast(target_branch_index, 0);
+	sibling = (clbpt_int_node *)(parent->entry[target_branch_index - 1].child);
+
+	// Handle "proc". 
+	if (gid < proc_num_entry) {
+		target->entry[gid] = proc_list[gid];
+	}
+	if (gid == 0) {
+		target->num_entry = proc_num_entry;
+	}
+	/*
+	if (target_branch_index != 0 && proc_num_entry < half_c(CLBPT_ORDER)) { 
+		// Need Borrow/Merge
+		if (sibling->num_entry + proc_num_entry + 2 < 
+			2 * half_c(CLBPT_ORDER)) {	// Merge
+
+		}
+	}
+	*/
 }
 
 /*
