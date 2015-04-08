@@ -37,6 +37,11 @@ struct _clbpt_platform {
 	int num_device;		// MangoKing forgot to use this one ?
 };
 
+typedef struct _clbpt_property {
+	void *root;
+	uint32_t level;
+} clbpt_property;
+
 typedef uint64_t clbpt_entry;
  
 typedef struct _clbpt_int_node {
@@ -45,16 +50,6 @@ typedef struct _clbpt_int_node {
 	uint32_t *parent;
 	uint32_t parent_key;
 } clbpt_int_node;
-
-typedef struct _clbpt_ins_pkt {
-	clbpt_int_node *target;
-	clbpt_entry entry;
-} clbpt_ins_pkt;
-
-typedef struct _clbpt_del_pkt {
-	clbpt_int_node *target;
-	int32_t key;
-} clbpt_del_pkt;
 
 typedef struct _clbpt_leaf_entry {
 	void *record_ptr;
@@ -66,6 +61,16 @@ typedef struct _clbpt_leaf_node {
 	uint32_t num_entry;
 	struct _clbpt_leaf_node *next_node;
 } clbpt_leaf_node;
+
+typedef struct _clbpt_ins_pkt {
+	clbpt_int_node *target;
+	clbpt_entry entry;
+} clbpt_ins_pkt;
+
+typedef struct _clbpt_del_pkt {
+	clbpt_int_node *target;
+	int32_t key;
+} clbpt_del_pkt;
 
 typedef	uint64_t clbpt_packet;
 
@@ -92,7 +97,7 @@ struct _clbpt_tree {
 	clbpt_property property;
 	cl_mem heap;
 	clbpt_leaf_node *leaf;
-	clbpt_node *root;
+	clbpt_int_node *root;
 };
 
 typedef struct _clbpt_tree *clbpt_tree;

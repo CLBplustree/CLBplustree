@@ -20,7 +20,7 @@ static uint32_t num_del;
 static clbpt_property property;
 static cl_mem property_d;
 
-static clbpt_node *root;
+static clbpt_int_node *root;
 
 static cl_int err;
 static size_t cb;
@@ -181,7 +181,7 @@ int _clbptInitialize(clbpt_tree tree)
 	size_t max_work_item_sizes[3];
 	err = clGetDeviceInfo(tree->platform->devices[0], CL_DEVICE_MAX_WORK_ITEM_SIZES, 0, NULL, &cb);
 	assert(err == 0);
-	err = clGetDeviceInfo(devices[i], CL_DEVICE_MAX_WORK_ITEM_SIZES, cb, &max_work_item_sizes[0], NULL);
+	err = clGetDeviceInfo(devices[0], CL_DEVICE_MAX_WORK_ITEM_SIZES, cb, &max_work_item_sizes[0], NULL);
 	assert(err == 0);
 	local_work_size = max_work_item_sizes[0];
 
@@ -245,7 +245,7 @@ int _clbptReleaseLeaf(clbpt_tree tree)
 	while(leaf != NULL)
 	{
 		node = leaf->next_node;
-		leaf->head == NULL;
+		leaf->head = NULL;
 		leaf->num_entry = 0;
 		leaf->next_node = NULL;
 		free(leaf);
@@ -326,7 +326,6 @@ int range_leaf(int32_t key, int32_t key_upper, void *node_addr)
 		}
 		end = entry;
 	}
-	
 
 	if (num_records > 0)
 	{
@@ -400,7 +399,7 @@ int insert_leaf(int32_t key, void *node_addr)
 
 			// insert entry_temp to internal node
 			ins[num_ins].target = node_temp;
-			ins[num_ins].entry = *entry_temp;
+			ins[num_ins].entry = (clbpt_entry)*entry_temp;
 			num_ins++;
 		}
 	}
