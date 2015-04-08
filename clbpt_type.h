@@ -16,17 +16,22 @@
 #define CLBPT_KEY_TYPE int
 #define CLBPT_RECORD_TYPE int
 
+// Temporary. Replace this by compiler option later.
+#define CLBPT_ORDER 8
+
 #define CLBPT_BUF_SIZE 65536
 
 #define CLBPT_STATUS_DONE 0
 #define CLBPT_STATUS_WAIT 1
+
+// KERNEL
 #define CLBPT_PACKET_SELECT 0
 #define CLBPT_PACKET_SORT 1
 #define CLBPT_INITIALIZE 2
 #define CLBPT_SEARCH 3
-#define CLBPT_INIT_WPACKET_BUFFER 4
+#define CLBPT_WPACKET_INIT 4
 #define CLBPT_WPACKET_BUFFER_HANDLER 5
-#define CLBPT_WPACKET_SUPER_GROUP_HANDLER 6
+#define CLBPT_WPACKET_COMPACT 6
 
 struct _clbpt_platform {
 	cl_context context;
@@ -45,10 +50,10 @@ typedef struct _clbpt_property {
 typedef uint64_t clbpt_entry;
  
 typedef struct _clbpt_int_node {
-	clbpt_entry *entry;
+	clbpt_entry entry[CLBPT_ORDER];
 	uint32_t num_entry;
 	uint32_t *parent;
-	uint32_t parent_key;
+	uint32_t parent_key;		// why unsigned ?
 } clbpt_int_node;
 
 typedef struct _clbpt_leaf_entry {

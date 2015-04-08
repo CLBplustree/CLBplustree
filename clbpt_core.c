@@ -172,6 +172,39 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 		}
 	}
 
+	// clmem initialize
+	static cl_mem ins_d;
+	static cl_mem del_d;
+
+	// clmem allocation
+	ins_d = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, num_ins * sizeof(clbpt_ins_pkt), ins, &err);
+	assert(err == 0);
+	del_d = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, num_del * sizeof(clbpt_del_pkt), del, &err);
+	assert(err == 0);
+
+	// kernel _clbptWPacketInit
+	kernel = kernels[CLBPT_WPACKET_INIT];
+
+	err = clSetKernelArg(kernel, 0, sizeof(ins_d), (void *)&ins_d);
+	assert(err == 0);
+	//err = clSetKernelArg(kernel, 1, sizeof(addr_D), (void *)&addr_d);
+	//assert(err == 0);
+	err = clSetKernelArg(kernel, 2, sizeof(num_ins), (void *)&num_ins);
+	assert(err == 0);
+	err = clSetKernelArg(kernel, 3, sizeof(del_d), (void *)&del_d);
+	assert(err == 0);
+	err = clSetKernelArg(kernel, 4, sizeof(num_del), (void *)&num_del);
+	assert(err == 0);
+	err = clSetKernelArg(kernel, 5, sizeof(tree->heap), (void *)&(tree->heap));
+	assert(err == 0);
+	err = clSetKernelArg(kernel, 6, sizeof(property_d), (void *)&property_d);
+	assert(err == 0);
+
+	// WPacketInit
+	global_work_size = num_ins > num_del ? num_ins : num_del;
+	err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
+	assert(err == 0);	
+
 	return CLBPT_STATUS_DONE;
 }
 
@@ -181,7 +214,7 @@ int _clbptInitialize(clbpt_tree tree)
 	size_t max_work_item_sizes[3];
 	err = clGetDeviceInfo(tree->platform->devices[0], CL_DEVICE_MAX_WORK_ITEM_SIZES, 0, NULL, &cb);
 	assert(err == 0);
-	err = clGetDeviceInfo(devices[0], CL_DEVICE_MAX_WORK_ITEM_SIZES, cb, &max_work_item_sizes[0], NULL);
+	err = clGetDeviceInfo(tree->platform->devices[0], CL_DEVICE_MAX_WORK_ITEM_SIZES, cb, &max_work_item_sizes[0], NULL);
 	assert(err == 0);
 	local_work_size = max_work_item_sizes[0];
 
@@ -398,9 +431,9 @@ int insert_leaf(int32_t key, void *node_addr)
 			node->next_node = node_temp;
 
 			// insert entry_temp to internal node
-			ins[num_ins].target = node_temp;
-			ins[num_ins].entry = (clbpt_entry)*entry_temp;
-			num_ins++;
+			//ins[num_ins].target = node_temp;
+			//ins[num_ins].entry = (clbpt_entry)*entry_temp;
+			//num_ins++;
 		}
 	}
 	else	// No Insert
@@ -462,9 +495,9 @@ int delete_leaf(int32_t key, void *node_addr)	// not sure is it able to borrow y
 				node->next_node = node_temp->next_node;
 
 				// delete entry_temp to internal node
-				del[num_del].target = node_temp;
-				del[num_del].key = *((int32_t *)node_temp->head->record_ptr);
-				num_del++;
+				//del[num_del].target = node_temp;
+				//del[num_del].key = *((int32_t *)node_temp->head->record_ptr);
+				//num_del++;
 
 				node_temp->head = NULL;
 				node_temp->next_node = NULL;

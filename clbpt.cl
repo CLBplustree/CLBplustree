@@ -489,7 +489,7 @@ _clbptSearch(
  *	The global size must equal to or greater than num_ins and num_del.
  */
 __kernel void
-_clbptWPacketInit(						
+_clbptWPacketInit(		
 	__global clbpt_ins_pkt *ins,
 	__global cpu_address_t *addr,
 	uint num_ins,
