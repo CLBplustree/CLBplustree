@@ -114,6 +114,14 @@ _clbptWPacketBufferRootHandler(
     );
 
 __kernel void
+_clbptWPacketBufferPreRootHandler(
+    __global clbpt_ins_pkt *ins,
+    uint num_ins,
+    __global struct clheap *heap,
+    __global clbpt_property *property
+    );
+
+__kernel void
 _clbptWPacketCompact(
         __global clbpt_ins_pkt *ins,
         uint num_ins,
@@ -563,7 +571,7 @@ _clbptWPacketInit(
 			enqueue_kernel(
 				get_default_queue(),
 				CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
-				ndrange_1D(MAX_LOCAL_SIZE, MAX_LOCAL_SIZE),
+				ndrange_1D(CLBPT_ORDER, CLBPT_ORDER),
 				^{
 					 _clbptWPacketBufferHandler(ins, num_ins, del, num_del, 
 						heap, property, level_proc);
@@ -585,6 +593,15 @@ _clbptWPacketInit(
 		}
 		else {
 			// Handle pre-root stage
+			enqueue_kernel(
+				get_default_queue(),
+				CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
+				ndrange_1D(CLBPT_ORDER, CLBPT_ORDER),
+				^{
+					_clbptWPacketBufferPreRootHandler(ins, num_ins, heap, 
+						property);
+				}
+			);
 		}
 	}
 }
@@ -757,7 +774,7 @@ _clbptWPacketCompact(
 	// Enqueue _clbptWPacketBufferHandler
 	if (gid == 0) {
 		int level_proc = level_proc_old - 1;
-		if (level_proc >= 0) {
+		if (level_proc > 0) {
 			enqueue_kernel(
 				get_default_queue(),
 				CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
@@ -768,8 +785,30 @@ _clbptWPacketCompact(
 				 }
 			);
 		} 
+		else if (level_proc == 0) {
+			// Handle root node layer
+			enqueue_kernel(
+				get_default_queue(),
+				CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
+				ndrange_1D(CLBPT_ORDER, CLBPT_ORDER),
+				^(__local void *proc_list){
+					_clbptWPacketBufferRootHandler(proc_list, ins, num_ins, del, 
+						num_del, heap, property);
+				},
+				2 * CLBPT_ORDER * sizeof(clbpt_entry)
+			);
+		}
 		else {
-			// Enqueue level up procedure
+			// Handle pre-root stage
+			enqueue_kernel(
+				get_default_queue(),
+				CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
+				ndrange_1D(CLBPT_ORDER, CLBPT_ORDER),
+				^{
+					_clbptWPacketBufferPreRootHandler(ins, num_ins, heap, 
+						property);
+				}
+			);
 		}
 	}
 }
@@ -1109,4 +1148,26 @@ _clbptWPacketBufferRootHandler(
 			}
 		}
 	}
+}
+
+__kernel void
+_clbptWPacketBufferPreRootHandler(
+    __global clbpt_ins_pkt *ins,
+    uint num_ins,
+    __global struct clheap *heap,
+    __global clbpt_property *property
+    )
+{
+	uint gid = get_global_id(0);
+	clbpt_int_node *new_root;
+
+	new_root = (clbpt_int_node *)malloc(heap, sizeof(clbpt_int_node));
+	new_root->parent = (uintptr_t)property;
+	new_root->parent_key = KEY_MIN;
+	new_root->num_entry = 2;
+	new_root->entry[0].key = KEY_MIN;
+	new_root->entry[0].child = property->root;
+	new_root->entry[1] = ins[0].entry;
+	property->root = (uintptr_t)new_root;
+	property->level += 1;
 }
