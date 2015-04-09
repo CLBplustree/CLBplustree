@@ -79,6 +79,8 @@ typedef struct _clbpt_property {
 #define half_c(X) (((X) + 1) / 2)
 #define half_f(X) ((X) / 2)
 
+#define KEY_MIN (0xC0000000)
+
 /*
 #define initDeleteWPacket(X) ((X).new_addr = 0)
 #define initInsertWPacket(X, ADDR) ((X).new_addr = ADDR)
@@ -99,6 +101,17 @@ _clbptWPacketBufferHandler(
         __global clbpt_property *property,
         uint level_proc
         );
+
+__kernel void
+_clbptWPacketBufferRootHandler(
+	__local clbpt_entry *proc_list,
+    __global clbpt_ins_pkt *ins,
+    uint num_ins,
+    __global clbpt_del_pkt *del,
+    uint num_del,
+    __global struct clheap *heap,
+    __global clbpt_property *property
+    );
 
 __kernel void
 _clbptWPacketCompact(
@@ -542,22 +555,36 @@ _clbptWPacketInit(
 		entry_index = _binary_search(node, getKey(del_pkt.key));
 		free(heap, node->entry[entry_index].child);
 	}
-	// Enqueue _clbptWPacketBufferHandler
+	// Handle them
 	if (gid == 0) {
 		int level_proc = property->level - 2;
-		if (level_proc >= 0) {
+		if (level_proc > 0) {
+			// Handle internal node layer
 			enqueue_kernel(
 				get_default_queue(),
 				CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
-				ndrange_1D(CLBPT_ORDER, CLBPT_ORDER),
+				ndrange_1D(MAX_LOCAL_SIZE, MAX_LOCAL_SIZE),
 				^{
-					 _clbptWPacketBufferHandler(ins,	num_ins, del, num_del, 
+					 _clbptWPacketBufferHandler(ins, num_ins, del, num_del, 
 						heap, property, level_proc);
 				 }
 			);
 		} 
+		else if (level_proc == 0) {
+			// Handle root node layer
+			enqueue_kernel(
+				get_default_queue(),
+				CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
+				ndrange_1D(CLBPT_ORDER, CLBPT_ORDER),
+				^(__local void *proc_list){
+					_clbptWPacketBufferRootHandler(proc_list, ins, num_ins, del, 
+						num_del, heap, property);
+				},
+				2 * CLBPT_ORDER * sizeof(clbpt_entry)
+			);
+		}
 		else {
-			// Enqueue level up procedure
+			// Handle pre-root stage
 		}
 	}
 }
@@ -687,7 +714,9 @@ _clbptWPacketCompact(
 
 	// Compace Insert Packet List
 	id_base = 0;
-	for (uint old_ins_i_base = 0; old_ins_i_base < num_ins; old_ins_i_base += grsize) {
+	for (uint old_ins_i_base = 0; old_ins_i_base < num_ins; 
+		old_ins_i_base += grsize)
+	{
 		uint old_ins_i = old_ins_i_base + gid;
 		if (old_ins_i < num_ins) {
 			valid = isWPacketValid(ins_proc = ins[old_ins_i]);
@@ -937,137 +966,147 @@ _clbptWPacketGroupHandler(
 	*/
 }
 
-/*
 __kernel void
-_clbptWPacketSuperGroupHandler(
-	__global clbpt_wpacket *wpacket,
-	uint num_wpacket_in_super_group,
-	__global clbpt_wpacket *propagate,
-	__global struct clheap *heap,
-	__global clbpt_property *property,
-	uint level_proc
-	)
+_clbptWPacketBufferRootHandler(
+	__local clbpt_entry *proc_list,
+    __global clbpt_ins_pkt *ins,
+    uint num_ins,
+    __global clbpt_del_pkt *del,
+    uint num_del,
+    __global struct clheap *heap,
+    __global clbpt_property *property
+    )
 {
-	int wpacket_group_start;
-	uintptr_t prev_target, cur_target;
-	uint top_propagate = 0;
-	
-	wpacket_group_start = 0;
-	prev_target = wpacket[0].target;
-	for (int i = 1; i < num_wpacket_in_super_group; i++) {
-		cur_target = wpacket[i].target;
-		if (cur_target != prev_target) {
-			// call function
-			wpacket_group_start = i;
-			prev_target = cur_target;
-		}
-	}
-	// call function
-}
+	uint gid = get_global_id(0);
+	clbpt_int_node *target;
 
-void
-_clbptWPacketGroupHandler(
-	clbpt_wpacket *wpacket,
-	uint num_wpacket_in_group,
-	clbpt_wpacket *propagate,
-	uint *top_propagate,
-	struct clheap *heap,
-	clbpt_property *property,
-	uint level_proc
-	)
-{
-	clbpt_int_node *target = (clbpt_int_node *)(wpacket[0].target);
-	clbpt_entry merge_entry[2 * CLBPT_ORDER];
-	uint num_merge_entry = 0;
-	uint index_old_entry = 0;
-	uint num_old_entry = target->num_entry;
-	uint index_wpacket = 0;
-	clbpt_wpacket wpkt;
-	
-	// Deal with W-packets
-	for (index_wpacket = 0; index_wpacket < num_wpacket_in_group; index_wpacket++) {
-		wpkt = wpacket[index_wpacket];
-		if (isNopWPacket(wpkt)) {
-			continue;
-		} else if (isInsertWPacket(wpkt)) {
-			while (index_old_entry < num_old_entry && 
-				getKeyFromEntry(target->entry[index_old_entry]) < getKeyFromWPacket(wpkt))
-			{
-				merge_entry[num_merge_entry++] = target->entry[index_old_entry];
-				index_old_entry++;
-			}
-			merge_entry[num_merge_entry].key = wpkt.key;
-			merge_entry[num_merge_entry].child = wpkt.new_addr;
-			num_merge_entry++;
-		} else {
-			while (index_old_entry < num_old_entry && 
-				getKeyFromEntry(target->entry[index_old_entry]) < getKeyFromWPacket(wpkt))
-			{
-				merge_entry[num_merge_entry++] = target->entry[index_old_entry];
-				index_old_entry++;
-			}
-			index_old_entry++;
-		}
+	// Clear proc_list
+	proc_list[gid] = ENTRY_NULL;
+	proc_list[CLBPT_ORDER + gid] = ENTRY_NULL;
+	// Copy the target node into proc_list
+	if (num_ins != 0) {
+		target = (clbpt_int_node *)(ins[0].target);
 	}
-	
-	// Propagate
-	if (num_merge_entry == 0) {		// Merge
-		//_clbptMerge(target, propagate, top_propagate, heap);
-	} else if (num_merge_entry < CLBPT_ORDER) {		// No propagate
-		for (int i = 0; i < num_merge_entry; i++) {
-			target->entry[i] = merge_entry[i];
-		}
-		target->num_entry = num_merge_entry;
-	} else {	// Split
-		//_clbptSplit(target, propagate, top_propagate, heap);
+	else {
+		target = (clbpt_int_node *)(del[0].target);
 	}
-}
+	if (gid < target->num_entry) {
+		proc_list[gid] = target->entry[gid];
+	}
+	// Delete
+	if (gid < num_del) {
+		int target_key;
 
-void
-_clbptMerge(
-	clbpt_int_node *target,
-	clbpt_wpacket *propagate,
-	uint *top_propagate,
-	struct clheap *heap,
-	clbpt_property *property,
-	uint level_proc
-	)
-{
-	clbpt_int_node *parent = (clbpt_int_node *)(target->parent);
-	int key = getParentKeyFromNode(*target);
-	uint index_entry_low, index_entry_high, index_entry_mid;
-	clbpt_int_node *sibling;
-	
-	if (level_proc == 0) {
+		target_key = getKey(del[gid].key);
+		for (uint i = 1; i < 2 * CLBPT_ORDER; i++) {
+			if (getKey(proc_list[i].key) == target_key) {
+				proc_list[i] = ENTRY_NULL;
+			}
+		}
+	}
+	work_group_barrier(CLK_LOCAL_MEM_FENCE);
+	// Insert
+	if (gid < num_ins) {
+		proc_list[CLBPT_ORDER + gid] = ins[gid].entry;
+	}
+	if (gid < 2 * CLBPT_ORDER) {
+		uint bitonic_max_level, offset, local_offset;
+		size_t exchg_index;
+		clbpt_entry temp1, temp2;
 		
+		for (bitonic_max_level = 1; bitonic_max_level < 2 * CLBPT_ORDER; 
+			bitonic_max_level <<= 1)
+		{
+			if ((local_offset = gid & ((bitonic_max_level << 1) - 1))
+				< bitonic_max_level)
+			{
+				if ((getKey((temp1 = proc_list[gid]).key) > 
+					getKey((temp2 = proc_list[exchg_index = gid + 
+						((bitonic_max_level - local_offset) << 1) - 1]).key) ||
+					temp1.child == NULL) && exchg_index < CLBPT_ORDER * 2) 
+				{
+					proc_list[gid] = temp2;
+					proc_list[exchg_index] = temp1;
+				}
+			}
+			work_group_barrier(CLK_LOCAL_MEM_FENCE);
+			for (offset = (bitonic_max_level >> 1); offset != 0; offset >>= 1) {
+				if ((gid & ((offset << 1) - 1)) < offset) {
+					if ((getKey((temp1 = proc_list[gid]).key) > 
+						getKey((temp2 = 
+							proc_list[exchg_index = gid + offset]).key) ||
+						temp1.child == NULL) && exchg_index < CLBPT_ORDER * 2)
+					{
+						proc_list[gid] = temp2;
+						proc_list[exchg_index] = temp1;
+					}
+				}
+				work_group_barrier(CLK_LOCAL_MEM_FENCE);
+			}
+		}
 	}
-	index_entry_low = 0;
-	index_entry_high = parent->num_entry - 1;
-	for (;;) {
-		index_entry_mid = (index_entry_low + index_entry_high) / 2;
-		if (key < getKeyFromEntry(parent->entry[index_entry_mid])) {
-			index_entry_high = index_entry_mid - 1;
+	// Count num_entry
+	uint proc_num_entry;
+	{
+		uint valid = 0;
+		if (gid < 2 * CLBPT_ORDER && proc_list[gid].child != NULL) {
+			valid = 1;
 		}
-		else if (key >= getKeyFromEntry(parent->entry[index_entry_mid + 1])) {
-			index_entry_low = index_entry_mid + 1;
-		}
-		else {
-			break;
+		proc_num_entry = work_group_reduce_add(valid);
+	}
+
+	// Handle proc
+	if (proc_num_entry == 1) {
+		// Need downleveling
+		if (gid == 0) {
+			property->root = proc_list[0].child;
+			property->level -= 1;
+			free(heap, (uintptr_t)target);
 		}
 	}
-	
-}
+	else if (proc_num_entry <= CLBPT_ORDER) {
+		// Peaceful
+		if (gid < CLBPT_ORDER) {
+			target->entry[gid] = proc_list[gid];
+		}
+		if (gid == 0) {
+			target->num_entry = proc_num_entry;
+		}
+	}
+	else {
+		// Need upleveling
+		clbpt_int_node *new_root;
+		clbpt_int_node *new_sibling;
 
-void
-_clbptSplit(
-	clbpt_int_node *target,
-	clbpt_wpacket *propagate,
-	uint *top_propagate,
-	struct clheap *heap,
-	clbpt_property *property,
-	uint level_proc
-	)
-{
-
+		if (gid == 0) {
+			new_root = (clbpt_int_node *)malloc(heap, sizeof(clbpt_int_node));
+			new_sibling = (clbpt_int_node *)malloc
+				(heap, sizeof(clbpt_int_node));
+			property->root = (uintptr_t)new_root;
+			property->level += 1;
+			new_root->parent = (uintptr_t)property;
+			new_root->parent_key = KEY_MIN;
+			new_root->num_entry = 2;
+			new_root->entry[0].key = KEY_MIN;
+			new_root->entry[0].child = (uintptr_t)target;
+			new_root->entry[1].key = proc_list[half_c(proc_num_entry)].key;
+			new_root->entry[1].child = (uintptr_t)new_sibling;
+			target->parent = (uintptr_t)new_root;
+			target->num_entry = half_c(proc_num_entry);
+			new_sibling->parent = (uintptr_t)new_root;
+			new_sibling->parent_key = proc_list[half_f(proc_num_entry - 1)].key;
+			new_sibling->num_entry = proc_num_entry - half_c(proc_num_entry);
+		}
+		if (gid < proc_num_entry - half_c(proc_num_entry)) {
+			if (gid == 0) {
+				new_sibling->entry[0].key = KEY_MIN;
+				new_sibling->entry[0].child = 
+					proc_list[half_c(proc_num_entry)].child;
+			}
+			else {
+				new_sibling->entry[gid] = proc_list
+					[half_c(proc_num_entry) + gid];
+			}
+		}
+	}
 }
-*/
