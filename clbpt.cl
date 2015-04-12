@@ -2,6 +2,7 @@
 	Issues:		1. Packet select: isOver
 */
 
+#include "clIndexedQueue.cl"
 #include "kma.cl"
 
 // Temporary. Replace this by compiler option later.
@@ -116,7 +117,6 @@ _clbptWPacketBufferRootHandler(
 __kernel void
 _clbptWPacketBufferPreRootHandler(
     __global clbpt_ins_pkt *ins,
-    uint num_ins,
     __global struct clheap *heap,
     __global clbpt_property *property
     );
@@ -149,7 +149,11 @@ _clbptWPacketGroupHandler(
 	uint num_ins,
 	__global clbpt_del_pkt *del,
 	uint num_del,
-	__global struct clheap *heap
+	__global struct clheap *heap,
+	clbpt_int_node *parent,
+	uint target_branch_index,
+	clbpt_int_node *target,
+	clbpt_int_node *sibling
 	);
 
 __kernel void
@@ -598,8 +602,7 @@ _clbptWPacketInit(
 				CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
 				ndrange_1D(CLBPT_ORDER, CLBPT_ORDER),
 				^{
-					_clbptWPacketBufferPreRootHandler(ins, num_ins, heap, 
-						property);
+					_clbptWPacketBufferPreRootHandler(ins, heap, property);
 				}
 			);
 		}
@@ -805,8 +808,7 @@ _clbptWPacketCompact(
 				CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
 				ndrange_1D(CLBPT_ORDER, CLBPT_ORDER),
 				^{
-					_clbptWPacketBufferPreRootHandler(ins, num_ins, heap, 
-						property);
+					_clbptWPacketBufferPreRootHandler(ins, heap, property);
 				}
 			);
 		}
@@ -829,29 +831,25 @@ _clbptWPacketSuperGroupHandler(
 	uint is_in_group;
 	uintptr_t cur_target;
 	clk_event_t level_bar;
+	uint target_branch_index;
+	clbpt_int_node *parent;
+	clbpt_int_node *sibling = 0;
 
 	ins_begin = 0;
 	del_begin = 0;
-	while (ins_begin != num_ins || del_begin != num_del) {
+	if (num_ins > 0) {
+		parent = (clbpt_int_node *)
+			(((clbpt_int_node *)(ins[0].target))->parent);
+	}
+	else {
+		parent = (clbpt_int_node *)
+			(((clbpt_int_node *)(del[0].target))->parent);
+	}
+	for (target_branch_index = 0; target_branch_index < parent->num_entry; 
+		target_branch_index++)
+	{
 		// Define cur_target
-		if (gid == 0) {
-			if (ins_begin == num_ins) {
-				cur_target = (uintptr_t)(del[del_begin].target);
-			}
-			else if (del_begin== num_del) {
-				cur_target = (uintptr_t)(ins[ins_begin].target);
-			}
-			else if (getKey(ins[ins_begin].entry.key) <
-				getKey(del[del_begin].key))
-			{
-				cur_target = (uintptr_t)(ins[ins_begin].target);
-			}
-			else {
-				cur_target = (uintptr_t)(del[del_begin].target);
-			}
-		}
-		work_group_barrier(0);
-		cur_target = work_group_broadcast(cur_target, 0);
+		cur_target = parent->entry[target_branch_index].child;
 		// Find siblings in ins and del
 		if (ins_begin + gid < num_ins) {
 			if ((uintptr_t)(ins[ins_begin + gid].target) == cur_target) {
@@ -879,7 +877,9 @@ _clbptWPacketSuperGroupHandler(
 		}
 		work_group_barrier(0);
 		num_del_group = work_group_reduce_add(is_in_group);
-		_clbptWPacketGroupHandler(proc_list, ins, num_ins, del, num_del, heap);
+		_clbptWPacketGroupHandler(proc_list, ins + ins_begin, num_ins, 
+			del + del_begin, num_del, heap, parent, target_branch_index,
+			(clbpt_int_node *)cur_target, sibling);
 		ins_begin += num_ins_group;
 		del_begin += num_del_group;
 	}
@@ -892,22 +892,19 @@ _clbptWPacketGroupHandler(
 	uint num_ins,
 	__global clbpt_del_pkt *del,
 	uint num_del,
-	__global struct clheap *heap
+	__global struct clheap *heap,
+	clbpt_int_node *parent,
+	uint target_branch_index,
+	clbpt_int_node *target,
+	clbpt_int_node *sibling
 	)
 {
 	uint gid = get_global_id(0);
-	clbpt_int_node *target;
 
 	// Clear proc_list
 	proc_list[gid] = ENTRY_NULL;
 	proc_list[CLBPT_ORDER + gid] = ENTRY_NULL;
 	// Copy the target node into proc_list
-	if (num_ins != 0) {
-		target = (clbpt_int_node *)(ins[0].target);
-	}
-	else {
-		target = (clbpt_int_node *)(del[0].target);
-	}
 	if (gid < target->num_entry) {
 		proc_list[gid] = target->entry[gid];
 	}
@@ -973,31 +970,11 @@ _clbptWPacketGroupHandler(
 		proc_num_entry = work_group_reduce_add(valid);
 	}
 
-	// Locate on Parent Node
-	clbpt_int_node *parent;
-	int target_branch_key;
-	uint target_branch_index;
-	clbpt_int_node *sibling;
-
-	parent = (clbpt_int_node *)(target->parent);
-	target_branch_key = target->parent_key;
-	if (gid == 0) {
-		target_branch_index = _binary_search(parent, target_branch_key);
-	}
-	target_branch_index = work_group_broadcast(target_branch_index, 0);
-	sibling = (clbpt_int_node *)(parent->entry[target_branch_index - 1].child);
-
 	// Handle "proc". 
-	if (gid < proc_num_entry) {
-		target->entry[gid] = proc_list[gid];
-	}
-	if (gid == 0) {
-		target->num_entry = proc_num_entry;
-	}
 	/*
 	if (target_branch_index != 0 && proc_num_entry < half_c(CLBPT_ORDER)) { 
 		// Need Borrow/Merge
-		if (sibling->num_entry + proc_num_entry + 2 < 
+		if (sibling->num_entry + proc_num_entry < 
 			2 * half_c(CLBPT_ORDER)) {	// Merge
 
 		}
@@ -1153,7 +1130,6 @@ _clbptWPacketBufferRootHandler(
 __kernel void
 _clbptWPacketBufferPreRootHandler(
     __global clbpt_ins_pkt *ins,
-    uint num_ins,
     __global struct clheap *heap,
     __global clbpt_property *property
     )
