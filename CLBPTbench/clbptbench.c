@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <getopt.h>
+#include <time.h>
 
 #define UNKNOWN_METHOD -1
 #define NORMAL_METHOD 0
@@ -23,6 +24,7 @@ typedef struct
 
 void helpmsg();
 void optmsg(optset *opts);
+void optcheck(optset *opts);
 int str2method(char *str);
 char *method2str(int method);
 void gendata(optset *opts);
@@ -46,7 +48,7 @@ int main(int argc, char **argv)
 		helpmsg();
 		exit(0);
 	}
-	
+	srand(time(NULL));
 	while(1)
 	{
 		char arg;
@@ -83,7 +85,7 @@ int main(int argc, char **argv)
 				opts.num = atoi(optarg);
 			break;
 			case 'o' :
-				opts.output = open(optarg,O_RDWR|O_CREAT,0744);
+				opts.output = open(optarg,O_RDWR|O_CREAT,0644);
 				if(opts.output == -1)perror("open file error");
 			break;
 			case 'v' :
@@ -96,7 +98,7 @@ int main(int argc, char **argv)
 
 	if(opts.verbose)
 		optmsg(&opts);
-
+	optcheck(&opts);
 	gendata(&opts);
 	close(opts.output);
 
@@ -107,12 +109,14 @@ void helpmsg()
 {
 	printf("This is the CLBPT bench helper\n");
 	printf("==============================\n");
-	printf("--max    (int)                \n");
-	printf("--min    (int)                \n");
-	printf("--num    (int)                \n");
-	printf("--method (str)                \n");
-	printf("         normal               \n");
-	printf("--help                        \n");
+	printf("--output  -o (str)                \n");
+	printf("--max     -M (int)                \n");
+	printf("--min     -m (int)                \n");
+	printf("--num     -n (int)                \n");
+	printf("--method  -E (str)                \n");
+	printf("             normal               \n");
+	printf("--verbose -v                    \n");
+	printf("--help    -h                    \n");
 }
 
 void optmsg(optset *opts)
@@ -123,6 +127,17 @@ void optmsg(optset *opts)
 	printf("Min index : %10d\n",opts->min);
 	printf("Data size : %10d\n",opts->num);
 	printf("Method    : %10s\n",method2str(opts->method));
+	printf("\n");
+}
+
+void optcheck(optset *opts)
+{
+	if( opts->delete_ratio > opts->insert_ratio )
+	{
+		fprintf(stderr,"Insert operation must not be less than delete operation.\n");
+		fprintf(stderr,"STOP GENERATION!\n");
+		exit(1);
+	}
 }
 
 int str2method(char *str)
@@ -145,6 +160,30 @@ char *method2str(int method)
 
 void gendata(optset *opts)
 {
-	write(opts->output,"hi! this is a test!\n",strlen("hi! this is a test!\n"));
+	int i, isz, ssz, dsz;
+	int *box;
+	isz = ((opts->num * opts->insert_ratio) / 100);
+	box = calloc(isz,sizeof(int));
+	if(opts->verbose)printf("Generating %10d insert operations\n",isz);
+	for(i=0;i<isz;i++)
+	{
+		int n = (rand()%(opts->max-opts->min)+opts->min);
+		dprintf(opts->output,"i %d\n",n);
+		box[i] = n;
+	}
+	ssz = ((opts->num * opts->select_ratio) / 100);
+	if(opts->verbose)printf("Generating %10d select operations\n",ssz);
+	for(i=0;i<ssz;i++)
+	{
+		int n = (rand()%isz);
+		dprintf(opts->output,"s %d\n",box[n]);
+	}
+	dsz = ((opts->num * opts->delete_ratio) / 100);
+	if(opts->verbose)printf("Generating %10d delete operations\n",dsz);
+	for(i=0;i<dsz;i++)
+	{
+		int n = (rand()%isz);
+		dprintf(opts->output,"d %d\n",box[n]);
+	}
 }
 
