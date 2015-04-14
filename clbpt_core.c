@@ -11,6 +11,7 @@
 static cl_context context;
 static cl_command_queue queue;
 static cl_kernel *kernels;
+static cl_kernel kernel;
 static char kernels_name[NUM_KERNELS][35] = {
 	"_clbptPacketSelect",
 	"_clbptPacketSort",
@@ -22,7 +23,6 @@ static char kernels_name[NUM_KERNELS][35] = {
 	"_clbptWPacketCompact",
 	"_clbptWPacketSuperGroupHandler"
 };
-static cl_kernel kernel;
 
 static clbpt_ins_pkt *ins;
 static uint32_t num_ins;
@@ -285,7 +285,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	kernel = kernels[CLBPT_WPACKET_INIT];
 	err = clSetKernelArg(kernel, 0, sizeof(ins_d), (void *)&ins_d);
 	assert(err == 0);
-	err = clSetKernelArg(kernel, 1, sizeof(addr_D), (void *)&addr_d);
+	err = clSetKernelArg(kernel, 1, sizeof(addr_d), (void *)&addr_d);
 	assert(err == 0);
 	err = clSetKernelArg(kernel, 2, sizeof(num_ins), (void *)&num_ins);
 	assert(err == 0);
@@ -411,18 +411,16 @@ void handle_node(void *node_addr)
 			clbpt_entry entry_d;
 			entry_d.key = *((int32_t *)entry_temp->record_ptr);
 			entry_d.child = NULL;
-			ins[num_ins].target = node->next->parent;
+			ins[num_ins].target = node->next_node->parent;
 			ins[num_ins].entry = entry_d;
-			addr[num_ins] = (void *)node->next;
+			addr[num_ins] = (void *)node->next_node;
 			num_ins++;
 			
 			node->num_entry += 1;
 			node->next_node->num_entry -= 1;
 		}
 		else	// Leftmost node borrows from right sibling
-		{
-			leftmost_node_borrow = 1;
-		}
+		{}
 		/*
 		if (node->next_node != NULL &&
 			node->next_node->num_entry - 1 < half_c(CLBPT_ORDER))	// Merge
