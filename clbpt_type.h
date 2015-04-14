@@ -74,6 +74,7 @@ typedef struct _clbpt_leaf_node {
 	struct _clbpt_leaf_node *prev_node;
 	struct _clbpt_leaf_node *next_node;
 	clbpt_int_node *parent;
+	uint32_t parent_key;
 } clbpt_leaf_node;
 
 typedef struct _clbpt_ins_pkt {

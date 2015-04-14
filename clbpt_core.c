@@ -44,7 +44,8 @@ static size_t global_work_size;
 static size_t local_work_size = 256;	// get this value in _clbptInitialize
 static uint32_t buf_size = CLBPT_BUF_SIZE;
 
-void handle_node(void *node_addr);
+int handle_node(void *node_addr);
+int haldle_leftmost_node(clbpt_leaf_node *node);
 int search_leaf(int32_t key, void *node_addr);
 int range_leaf(int32_t key, int32_t key_upper, void *node_addr);
 int insert_leaf(int32_t key, void *node_addr);
@@ -81,6 +82,7 @@ int _clbptInitialize(clbpt_tree tree)
 	tree->leaf->next_node = NULL;
 	tree->leaf->prev_node = NULL;
 	tree->leaf->parent = NULL;
+	tree->leaf->parent_key = 0;
 
 	// initialize root
 	root = (void *)tree->leaf;
@@ -232,6 +234,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	clbpt_packet pkt;
 	int32_t key, key_upper;
 	void *node_addr = NULL;
+	int leftmost_node_borrow_merge = 0;
 	
 	for(i = 0; i < buf_size; i++)
 	{
@@ -240,7 +243,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 		//node_addr = tree->result_buf[i];
 		if (node_addr != tree->result_buf[i])
 		{
-			handle_node(node_addr);
+			leftmost_node_borrow_merge = handle_node(node_addr);
 			node_addr = tree->result_buf[i];
 		}
 
@@ -266,6 +269,10 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 			result = delete_leaf(key, node_addr);
 		}
 	}
+	if (leftmost_node_borrow_merge)
+	{
+		haldle_leftmost_node(tree->leaf);
+	}
 
 	// clmem initialize
 	static cl_mem ins_d;
@@ -279,7 +286,6 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	assert(err == 0);
 	del_d = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, num_del * sizeof(clbpt_del_pkt), del, &err);
 	assert(err == 0);
-
 
 	// kernel _clbptWPacketInit
 	kernel = kernels[CLBPT_WPACKET_INIT];
@@ -339,7 +345,7 @@ int _clbptReleaseLeaf(clbpt_tree tree)
 	return CLBPT_STATUS_DONE;
 }
 
-void handle_node(void *node_addr)
+int handle_node(void *node_addr)
 {
 	int m;
 	clbpt_leaf_node *node_temp, *node = node_addr;
@@ -347,10 +353,15 @@ void handle_node(void *node_addr)
 
 	if (node->num_entry >= CLBPT_ORDER)	// Need Split
 	{
+		if (node->num_entry > 2(CLBPT_ORDER-1))
+		{
+			// some insertion pkts should be put back to buffer
+			return;
+		}
 		node_temp = (clbpt_leaf_node *)malloc(sizeof(clbpt_leaf_node));
-		m = half_f(CLBPT_ORDER);
+		m = half_f(node->num_entry);
+		node_temp->num_entry = node->num_entry - m;
 		node->num_entry = m;
-		node_temp->num_entry = CLBPT_ORDER - m;
 
 		entry_temp = node->head;
 		while(m-- > 0)
@@ -360,67 +371,74 @@ void handle_node(void *node_addr)
 		node_temp->head = entry_temp;
 		node_temp->prev_node = node;
 		node_temp->next_node = node->next_node;
+		node_temp->parent = node->parent;
+		node_temp->parent_key = *((int32_t *)entry_temp->record_ptr)
 		node->next_node = node_temp;
 
 		// insert entry_temp to internal node
 		clbpt_entry entry_d;
-		entry_d.key = *((int32_t *)entry_temp->record_ptr);
+		entry_d.key = node_temp->parent_key
 		entry_d.child = NULL;
 		ins[num_ins].target = node->parent;
 		ins[num_ins].entry = entry_d;
 		addr[num_ins] = (void *)node_temp;
 		num_ins++;
 	}
-	else if (node->num_entry < half_c(CLBPT_ORDER))	// Need Borrow or Merge
+	else if (node->num_entry < half_f(CLBPT_ORDER))	// Need Borrow or Merge
 	{
-		if (node->prev_node != NULL &&
-			node->prev_node->num_entry - 1 < half_c(CLBPT_ORDER))	// Merge
+		if (node->prev_node != NULL)
 		{
-			node = node->prev_node;
-			node_temp = node->next_node;
-			node->num_entry += node_temp->num_entry;
-			node->next_node = node_temp->next_node;
-			if (node_temp->next_node != NULL)
+			//if (node->prev_node->num_entry - 1 < half_f(CLBPT_ORDER))	// Merge
+			if (node->num_entry + node->prev_node->num_entry < CLBPT_ORDER)	// Merge
 			{
-				node_temp->next_node->prev_node = node;
+				node = node->prev_node;
+				node_temp = node->next_node;
+				node->num_entry += node_temp->num_entry;
+				node->next_node = node_temp->next_node;
+				if (node_temp->next_node != NULL)
+				{
+					node_temp->next_node->prev_node = node;
+				}
+
+				// delete entry_temp to internal node
+				del[num_del].target = node_temp->parent;
+				del[num_del].key = node_temp->parent_key;
+				num_del++;
+
+				node_temp->head = NULL;
+				node_temp->num_entry = 0;
+				node_temp->next_node = NULL;
+				node_temp->prev_node = NULL;
+				node_temp->parent = NULL;
+				node_temp->parent_key = 0;
+				free(node_temp);
 			}
+			else	// Borrow WRONG
+			{
+				entry_temp = node->head;	// has bug when node is deleted to empty WRONG
+				// delete entry_temp to internal node
+				del[num_del].target = node->parent;
+				del[num_del].key = *((int32_t *)entry_temp->record_ptr);
+				num_del++;
 
-			// delete entry_temp to internal node
-			del[num_del].target = node_temp->parent;
-			del[num_del].key = *((int32_t *)node_temp->head->record_ptr);
-			num_del++;
-
-			node_temp->head = NULL;
-			node_temp->num_entry = 0;
-			node_temp->next_node = NULL;
-			node_temp->prev_node = NULL;
-			node_temp->parent = NULL;
-			free(node_temp);
+				entry_temp = node->next_node->head = node->next_node->head->next;
+				// insert entry_temp to internal node
+				clbpt_entry entry_d;
+				entry_d.key = *((int32_t *)entry_temp->record_ptr);
+				entry_d.child = NULL;
+				ins[num_ins].target = node->next_node->parent;
+				ins[num_ins].entry = entry_d;
+				addr[num_ins] = (void *)node->next_node;
+				num_ins++;
+				
+				node->num_entry += 1;
+				node->prev_node->num_entry -= 1;
+			}
 		}
-		else if (node->prev_node != NULL)	// Borrow
+		else	// Leftmost node borrows/merges from/with right sibling later
 		{
-			node = node->prev_node;
-			entry_temp = node->next_node->head;
-			// delete entry_temp to internal node
-			del[num_del].target = node->next_node->parent;
-			del[num_del].key = *((int32_t *)entry_temp->record_ptr);
-			num_del++;
-
-			entry_temp = node->next_node->head = node->next_node->head->next;
-			// insert entry_temp to internal node
-			clbpt_entry entry_d;
-			entry_d.key = *((int32_t *)entry_temp->record_ptr);
-			entry_d.child = NULL;
-			ins[num_ins].target = node->next_node->parent;
-			ins[num_ins].entry = entry_d;
-			addr[num_ins] = (void *)node->next_node;
-			num_ins++;
-			
-			node->num_entry += 1;
-			node->next_node->num_entry -= 1;
+			return 1;
 		}
-		else	// Leftmost node borrows from right sibling
-		{}
 		/*
 		if (node->next_node != NULL &&
 			node->next_node->num_entry - 1 < half_c(CLBPT_ORDER))	// Merge
@@ -462,6 +480,67 @@ void handle_node(void *node_addr)
 		else	// Rightmost node nothing to borrow
 		{}
 		*/
+	}
+	return 0;
+}
+
+int haldle_leftmost_node(clbpt_leaf_node *node)
+{
+	clbpt_leaf_node *node_temp;
+	clbpt_leaf_entry *entry_temp;
+
+	if (node->next_node != NULL)
+	{
+		//if (node->next_node->num_entry - 1 < half_f(CLBPT_ORDER))	// Merge
+		if (node->num_entry + node->next_node->num_entry < CLBPT_ORDER)	// Merge
+		{
+			node_temp = node->next_node;
+			node->num_entry += node_temp->num_entry;
+			node->next_node = node_temp->next_node;
+			if (node_temp->next_node != NULL)
+			{
+				node_temp->next_node->prev_node = node;
+			}
+
+			// delete entry_temp to internal node
+			del[num_del].target = node_temp->parent;
+			del[num_del].key = node_temp->parent_key;
+			num_del++;
+
+			node_temp->head = NULL;
+			node_temp->num_entry = 0;
+			node_temp->next_node = NULL;
+			node_temp->prev_node = NULL;
+			node_temp->parent = NULL;
+			node_temp->parent_key = 0;
+			free(node_temp);
+		}
+		else	// borrow WRONG
+		{
+			node_temp = node->next_node;
+			entry_temp = node_temp->head;
+			if (*((int32_t *)entry_temp->record_ptr) == node_temp->parent_key)
+			{
+				// delete entry_temp to internal node
+				del[num_del].target = node_temp->parent;
+				del[num_del].key = node_temp->parent_key;
+				num_del++;
+
+				entry_temp = node_temp->head->next;
+				node_temp->parent_key = *((int32_t *)entry_temp->record_ptr);
+				// insert entry_temp to internal node
+				clbpt_entry entry_d;
+				entry_d.key = *((int32_t *)entry_temp->record_ptr);
+				entry_d.child = NULL;
+				ins[num_ins].target = node_temp->parent;
+				ins[num_ins].entry = entry_d;
+				addr[num_ins] = (void *)node_temp;
+				num_ins++;
+			}
+			node_temp->head = node_temp->head->next;
+			node->num_entry += 1;
+			node_temp->num_entry -= 1;
+		}
 	}
 }
 
@@ -629,7 +708,7 @@ int insert_leaf(int32_t key, void *node_addr)
 
 int delete_leaf(int32_t key, void *node_addr)	// not sure is it able to borrow yet
 {
-	int m, existed = 0, leftmost_node_borrow = 0;
+	int m, existed = 0;
 	clbpt_leaf_node *node_temp, *node = node_addr;
 	clbpt_leaf_entry *entry_temp, *entry, *entry_free;
 
@@ -769,7 +848,7 @@ int delete_leaf(int32_t key, void *node_addr)	// not sure is it able to borrow y
 
 	free(entry_free);
 
-	return leftmost_node_borrow;
+	return !existed;
 }
 
 void show_leaf(clbpt_leaf_node *leaf)	// function for testing
