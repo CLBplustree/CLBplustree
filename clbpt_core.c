@@ -353,10 +353,10 @@ int handle_node(void *node_addr)
 
 	if (node->num_entry >= CLBPT_ORDER)	// Need Split
 	{
-		if (node->num_entry > 2(CLBPT_ORDER-1))
+		if (node->num_entry > 2*(CLBPT_ORDER-1))
 		{
 			// some insertion pkts should be put back to buffer
-			return;
+			return 2;
 		}
 		node_temp = (clbpt_leaf_node *)malloc(sizeof(clbpt_leaf_node));
 		m = half_f(node->num_entry);
@@ -372,12 +372,12 @@ int handle_node(void *node_addr)
 		node_temp->prev_node = node;
 		node_temp->next_node = node->next_node;
 		node_temp->parent = node->parent;
-		node_temp->parent_key = *((int32_t *)entry_temp->record_ptr)
+		node_temp->parent_key = *((int32_t *)entry_temp->record_ptr);
 		node->next_node = node_temp;
 
 		// insert entry_temp to internal node
 		clbpt_entry entry_d;
-		entry_d.key = node_temp->parent_key
+		entry_d.key = node_temp->parent_key;
 		entry_d.child = NULL;
 		ins[num_ins].target = node->parent;
 		ins[num_ins].entry = entry_d;
