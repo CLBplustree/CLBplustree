@@ -25,13 +25,16 @@
 #define CLBPT_STATUS_WAIT 1
 
 // KERNEL
+#define NUM_KERNELS 9
 #define CLBPT_PACKET_SELECT 0
 #define CLBPT_PACKET_SORT 1
 #define CLBPT_INITIALIZE 2
 #define CLBPT_SEARCH 3
 #define CLBPT_WPACKET_INIT 4
 #define CLBPT_WPACKET_BUFFER_HANDLER 5
-#define CLBPT_WPACKET_COMPACT 6
+#define CLBPT_WPACKET_BUFFER_ROOT_HANDLER 6
+#define CLBPT_WPACKET_COMPACT 7
+#define CLBPT_WPACKET_SUPER_GROUP_HANDLER 8
 
 struct _clbpt_platform {
 	cl_context context;
@@ -47,7 +50,11 @@ typedef struct _clbpt_property {
 	uint32_t level;
 } clbpt_property;
 
-typedef uint64_t clbpt_entry;
+//typedef uint64_t clbpt_entry;
+typedef struct _clbpt_entry {
+	int32_t key;
+	void *child;
+} clbpt_entry;
  
 typedef struct _clbpt_int_node {
 	clbpt_entry entry[CLBPT_ORDER];
@@ -64,7 +71,9 @@ typedef struct _clbpt_leaf_entry {
 typedef struct _clbpt_leaf_node {
 	clbpt_leaf_entry *head;
 	uint32_t num_entry;
+	struct _clbpt_leaf_node *prev_node;
 	struct _clbpt_leaf_node *next_node;
+	clbpt_int_node *parent;
 } clbpt_leaf_node;
 
 typedef struct _clbpt_ins_pkt {
@@ -102,7 +111,7 @@ struct _clbpt_tree {
 	clbpt_property property;
 	cl_mem heap;
 	clbpt_leaf_node *leaf;
-	clbpt_int_node *root;
+	void *root;
 };
 
 typedef struct _clbpt_tree *clbpt_tree;
