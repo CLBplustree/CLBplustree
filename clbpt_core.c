@@ -234,7 +234,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	assert(err == 0);
 
 	// handle leaf nodes
-	int i, j, k
+	int i, j, k;
 	int result, node_result;
 	clbpt_packet pkt;
 	int32_t key, key_upper;
@@ -257,8 +257,8 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 					{
 						if (isInsertPacket(tree->execute_buf[k]))
 						{
-							while(wait_buf[j] != PACKET_NOP) j++;
-							wait_buf[j] = tree->execute_buf[k];
+							while(tree->wait_buf[j] != PACKET_NOP) j++;
+							tree->wait_buf[j] = tree->execute_buf[k];
 							delete_leaf(getKeyFromPacket(tree->execute_buf[k]), node_addr);
 							node_result--;
 							break;
@@ -467,7 +467,7 @@ int handle_node(void *node_addr)
 		}
 		else	// Leftmost node borrows/merges from/with right sibling later
 		{
-			return leftMostNodeBorrow;
+			return leftMostNodeBorrowMerge;
 		}
 		/*
 		if (node->next_node != NULL &&
