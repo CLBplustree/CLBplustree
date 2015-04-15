@@ -20,6 +20,8 @@
 #define half_c(X) (((int)X+1)/2)
 #define half_f(X) (((int)X)/2)
 
+#define leftMostNodeBorrowMerge -1
+
 /**
  * @brief Create kernels of clbpt
  * @param platform.
@@ -44,7 +46,7 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree);
 /**
  * @brief Handle the executing buffer.
  * @param tree.
- * @return Success or not.
+ * @return Is the executing buffer empty or not.
  */
 int _clbptHandleExecuteBuffer(clbpt_tree tree);
 

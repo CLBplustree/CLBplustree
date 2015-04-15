@@ -104,6 +104,7 @@ struct _clbpt_tree {
 	clbpt_packet *execute_buf;
 	void **result_buf;
 	void **execute_result_buf;
+	void **node_addr_buf;
 
 	int degree;
 	size_t record_size;
