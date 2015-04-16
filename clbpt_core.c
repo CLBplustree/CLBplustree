@@ -45,8 +45,8 @@ static uint32_t buf_size = CLBPT_BUF_SIZE;
 
 int handle_node(void *node_addr);
 int haldle_leftmost_node(clbpt_leaf_node *node);
-int search_leaf(int32_t key, void *node_addr);
-int range_leaf(int32_t key, int32_t key_upper, void *node_addr);
+int search_leaf(int32_t key, void *node_addr, void *result_addr);
+int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_addr);
 int insert_leaf(int32_t key, void *node_addr);
 int delete_leaf(int32_t key, void *node_addr);
 void show_leaf(clbpt_leaf_node *leaf);	// function for testing
@@ -142,7 +142,7 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 	// clmem allocation
 	wait_buf_d = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, buf_size * sizeof(clbpt_packet), tree->wait_buf, &err);
 	execute_buf_d = clCreateBuffer(context, 0, buf_size * sizeof(clbpt_packet), NULL, &err);
-	result_buf_d = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, buf_size * sizeof(void *), (void *)tree->execute_result_buf, &err);
+	result_buf_d = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, buf_size * sizeof(void *), (void *)tree->result_buf, &err);
 	execute_buf_d_temp = clCreateBuffer(context, 0, buf_size * sizeof(clbpt_packet), NULL, &err);
 	result_buf_d_temp = clCreateBuffer(context, 0, buf_size * sizeof(void *), NULL, &err);
 	isEmpty_d = clCreateBuffer(context, 0, sizeof(uint8_t), NULL, &err);
@@ -235,7 +235,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 
 	// handle leaf nodes
 	int i, j, k;
-	int result, node_result;
+	int inst_result, node_result;
 	clbpt_packet pkt;
 	int32_t key, key_upper;
 	void *node_addr = NULL;
@@ -253,7 +253,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 				k = i-1;
 				while(node_result > 0)
 				{
-					for(; k >= 0; k--)
+					while(k >= 0)
 					{
 						if (isInsertPacket(tree->execute_buf[k]))
 						{
@@ -263,6 +263,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 							node_result--;
 							break;
 						}
+						k--;
 					}
 				}
 				node_result = handle_node(node_addr);
@@ -277,20 +278,22 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 		}
 		if (isSearchPacket(pkt))
 		{
-			result = search_leaf(key, node_addr);
+			inst_result = search_leaf(key, node_addr, tree->execute_result_buf[i]);
+
+			
 		}
 		else if (isRangePacket(pkt))
 		{
 			key_upper = getUpperKeyFromRangePacket(pkt);
-			result = range_leaf(key, key_upper, node_addr);
+			inst_result = range_leaf(key, key_upper, node_addr, tree->execute_result_buf[i]);
 		}
 		else if (isInsertPacket(pkt))
 		{
-			result = insert_leaf(key, node_addr);
+			inst_result = insert_leaf(key, node_addr);
 		}
 		else if (isDeletePacket(pkt))
 		{
-			result = delete_leaf(key, node_addr);
+			inst_result = delete_leaf(key, node_addr);
 		}
 	}
 	if (node_result == leftMostNodeBorrowMerge)
@@ -584,9 +587,10 @@ int haldle_leftmost_node(clbpt_leaf_node *node)
 	return 0;
 }
 
-int search_leaf(int32_t key, void *node_addr)
+int search_leaf(int32_t key, void *node_addr, void *result_addr)
 {
 	int existed = 0;
+	int num_records_found;
 	clbpt_leaf_node *node = node_addr;
 	clbpt_leaf_entry *entry, *entry_free;
 
@@ -600,10 +604,12 @@ int search_leaf(int32_t key, void *node_addr)
 		if (*((int32_t *)entry->next->record_ptr) == key)
 		{
 			existed = 1;
+			result_addr = entry->next->record_ptr;
 			break;
 		}
 		if (*((int32_t *)entry->next->record_ptr) > key)
 		{
+			result_addr = NULL;
 			break;
 		}
 		entry = entry->next;
@@ -614,18 +620,20 @@ int search_leaf(int32_t key, void *node_addr)
 	if (existed)
 	{
 		printf("FOUND: record: %d is in the B+ Tree\n", key);
-		return 0;
+		num_records_found = 1
 	}
 	else
 	{
 		printf("NOT FOUND: record: %d is NOT in the B+ Tree\n", key);
-		return 1;
+		num_records_found = 0
 	}
+
+	return num_records_found;
 }
 
-int range_leaf(int32_t key, int32_t key_upper, void *node_addr)
+int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_addr)
 {
-	int i, num_records = 0;
+	int i, j, num_records = 0;
 	clbpt_leaf_node *node = node_addr;
 	clbpt_leaf_entry *start, *end, *entry = node->head;
 
@@ -654,12 +662,19 @@ int range_leaf(int32_t key, int32_t key_upper, void *node_addr)
 
 	if (num_records > 0)
 	{
+		result_addr = (void *)malloc(sizeof(void *) * (num_records+1));
+		((int32_t *)result_addr)[0] = num_records;
 		printf("RANGE SUCCESS: records: \n");
-		for(entry = start, i = num_records; i > 0; entry = entry->next, i--)
+		for(entry = start, i = num_records, j = 1; i > 0; entry = entry->next, i--, j++)
 		{
+			((void **)result_addr)[j] = entry->record_ptr;
 			printf("%d ", *((CLBPT_RECORD_TYPE *)entry->record_ptr));
 		}
 		printf("are inside the range[%d, %d]\n", *((CLBPT_RECORD_TYPE *)start->record_ptr), *((CLBPT_RECORD_TYPE *)end->record_ptr));
+	}
+	else
+	{
+		result_addr = NULL;
 	}
 
 	return num_records;

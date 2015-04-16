@@ -60,7 +60,7 @@ typedef struct _clbpt_int_node {
 	clbpt_entry entry[CLBPT_ORDER];
 	uint32_t num_entry;
 	uint32_t *parent;
-	uint32_t parent_key;		// why unsigned ?
+	uint32_t parent_key;
 } clbpt_int_node;
 
 typedef struct _clbpt_leaf_entry {
