@@ -17,7 +17,8 @@
 #define CLBPT_RECORD_TYPE int
 
 // Temporary. Replace this by compiler option later.
-#define CLBPT_ORDER 8
+#define CLBPT_ORDER 128	// Should be less than or equal to half
+						// of MAX_LOCAL_SIZE
 
 #define CLBPT_BUF_SIZE 65536
 
@@ -25,7 +26,7 @@
 #define CLBPT_STATUS_WAIT 1
 
 // KERNEL
-#define NUM_KERNELS 9
+#define NUM_KERNELS 10
 #define CLBPT_PACKET_SELECT 0
 #define CLBPT_PACKET_SORT 1
 #define CLBPT_INITIALIZE 2
@@ -33,8 +34,9 @@
 #define CLBPT_WPACKET_INIT 4
 #define CLBPT_WPACKET_BUFFER_HANDLER 5
 #define CLBPT_WPACKET_BUFFER_ROOT_HANDLER 6
-#define CLBPT_WPACKET_COMPACT 7
-#define CLBPT_WPACKET_SUPER_GROUP_HANDLER 8
+#define CLBPT_WPACKET_BUFFER_PRE_ROOT_HANDLER 7
+#define CLBPT_WPACKET_COMPACT 8
+#define CLBPT_WPACKET_SUPER_GROUP_HANDLER 9
 
 struct _clbpt_platform {
 	cl_context context;
