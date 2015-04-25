@@ -484,7 +484,7 @@ int haldle_leftmost_node(clbpt_leaf_node *node)
 	clbpt_leaf_node *node_sibling;
 	clbpt_leaf_entry *entry_head;
 
-	if (node->num_entry >= half_f(order)) return;
+	if (node->num_entry >= half_f(order)) return 0;
 	if (node->next_node != NULL)
 	{
 		//if (node->next_node->num_entry - 1 < half_f(order))	// Merge
@@ -582,12 +582,12 @@ int search_leaf(int32_t key, void *node_addr, void *result_addr)
 	if (existed)
 	{
 		printf("FOUND: record: %d is in the B+ Tree\n", key);
-		num_records_found = 1
+		num_records_found = 1;
 	}
 	else
 	{
 		printf("NOT FOUND: record: %d is NOT in the B+ Tree\n", key);
-		num_records_found = 0
+		num_records_found = 0;
 	}
 
 	return num_records_found;
