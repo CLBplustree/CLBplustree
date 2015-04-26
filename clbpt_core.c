@@ -7,6 +7,8 @@
 #include <assert.h>
 
 // Static Global Variables
+static cl_int err;
+static size_t cb;
 static cl_context context;
 static cl_command_queue queue;
 static cl_kernel *kernels;
@@ -24,26 +26,27 @@ static char kernels_name[NUM_KERNELS][35] = {
 	"_clbptWPacketSuperGroupHandler"
 };
 
-static clbpt_ins_pkt *ins;
-static uint32_t num_ins;
-static clbpt_del_pkt *del;
-static uint32_t num_del;
-static void **addr;
+static cl_mem wait_buf_d, execute_buf_d, result_buf_d;
+static cl_mem execute_buf_d_temp, result_buf_d_temp;
 
 static clbpt_property property;
 static cl_mem property_d;
 
 static clbpt_int_node *root;
 
-static cl_int err;
-static size_t cb;
-static cl_mem wait_buf_d, execute_buf_d, result_buf_d;
-static cl_mem execute_buf_d_temp, result_buf_d_temp;
+// Insert and Delete Packet (to internal node)
+static clbpt_ins_pkt *ins;
+static uint32_t num_ins;
+static clbpt_del_pkt *del;
+static uint32_t num_del;
+static void **addr;
 
+// Size and Order
 static size_t global_work_size;
 static size_t local_work_size = 256;	// get this value in _clbptInitialize
 static uint32_t order  = CLBPT_ORDER;	// get this value in _clbptInitialize
 static uint32_t buf_size = CLBPT_BUF_SIZE;
+
 
 int handle_node(void *node_addr);
 int haldle_leftmost_node(clbpt_leaf_node *node);
@@ -56,8 +59,8 @@ void show_leaf(clbpt_leaf_node *leaf);	// function for testing
 int _clbptCreateKernels(clbpt_platform platform)
 {
 	int i;
-
 	platform->kernels = (cl_kernel *)malloc(sizeof(cl_kernel) * NUM_KERNELS);
+
 	for(i = 0; i < NUM_KERNELS; i++)
 	{
 		kernels[i] = clCreateKernel(platform->program, kernels_name[i], &err);
@@ -128,7 +131,7 @@ int _clbptInitialize(clbpt_tree tree)
 	//tree->property = (clbpt_property)clEnqueueMapBuffer(queue, property_d, CL_TRUE, CL_MAP_READ, 0, sizeof(clbpt_property), 0, NULL, NULL, &err);
 	//assert(err == 0);
 
-	return CLBPT_STATUS_DONE;
+	return CL_SUCCESS;
 }
 
 int _clbptSelectFromWaitBuffer(clbpt_tree tree)
@@ -203,6 +206,7 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 	assert(err == 0);
 
 	tree->buf_status = CLBPT_STATUS_WAIT;
+
 	return isEmpty;	/* not done */
 }
 
@@ -242,6 +246,8 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	clbpt_packet pkt;
 	int32_t key, key_upper;
 	void *node_addr = NULL;
+	num_ins = 0;
+	num_del = 0;
 
 	for(i = 0, j = 0; i < buf_size; i++)
 	{
@@ -369,6 +375,7 @@ int _clbptReleaseLeaf(clbpt_tree tree)
 	// free ins_pkt, del_pkt, node_addr buffers
 	free(ins);
 	free(del);
+	free(addr);
 	free(tree->node_addr_buf);
 
 	return CLBPT_STATUS_DONE;
@@ -445,6 +452,7 @@ int handle_node(void *node_addr)
 			else	// Borrow
 			{
 				node_sibling = node->prev_node;
+
 				// delete old parent_key to internal node
 				del[num_del].target = node->parent;
 				del[num_del].key = node->parent_key;
@@ -460,6 +468,7 @@ int handle_node(void *node_addr)
 				}
 				node->head = entry_head;
 				node->parent_key = *((int32_t *)entry_head->record_ptr);
+
 				// insert new parent_key to internal node
 				clbpt_entry entry_d;
 				entry_d.key = node->parent_key;
@@ -475,6 +484,7 @@ int handle_node(void *node_addr)
 			return leftMostNodeBorrowMerge;
 		}
 	}
+
 	return 0;
 }
 
@@ -518,6 +528,7 @@ int haldle_leftmost_node(clbpt_leaf_node *node)
 			if (*((int32_t *)entry_head->record_ptr) == node_sibling->parent_key)
 			{
 				parent_key_update = 1;
+
 				// delete old parent_key to internal node
 				del[num_del].target = node_sibling->parent;
 				del[num_del].key = node_sibling->parent_key;
@@ -535,6 +546,7 @@ int haldle_leftmost_node(clbpt_leaf_node *node)
 			if (parent_key_update)
 			{
 				node_sibling->parent_key = *((int32_t *)entry_head->record_ptr);
+
 				// insert new parent_key to internal node
 				clbpt_entry entry_d;
 				entry_d.key = node_sibling->parent_key;
@@ -546,6 +558,7 @@ int haldle_leftmost_node(clbpt_leaf_node *node)
 			}
 		}
 	}
+
 	return 0;
 }
 
