@@ -733,7 +733,7 @@ _clbptWPacketCompact(
 	clbpt_ins_pkt ins_proc;
 	clbpt_del_pkt del_proc;
 
-	// Compace Insert Packet List
+	// Compact Insert Packet List
 	id_base = 0;
 	for (uint old_ins_i_base = 0; old_ins_i_base < num_ins; 
 		old_ins_i_base += grsize)
@@ -986,7 +986,7 @@ _clbptWPacketGroupHandler(
 		proc_num_entry < half_c(CLBPT_ORDER))
 	{
 		// Need Borrow or Merge
-		if (sibling->num_entry + target_branch_index < 
+		if (sibling->num_entry + proc_num_entry < 
 			2 * half_c(CLBPT_ORDER))
 		{
 			// Merge
@@ -998,7 +998,7 @@ _clbptWPacketGroupHandler(
 				sibling->entry[sibling->num_entry + gid] = proc_list[gid];
 			}
 			if (gid == 0) {
-				sibling->num_entry += target_branch_index;
+				sibling->num_entry += proc_num_entry;
 				del[0].target = parent;
 				del[0].key = target->parent_key;
 				free(heap, (uintptr_t)target);
@@ -1010,12 +1010,12 @@ _clbptWPacketGroupHandler(
 				sibling->entry[sibling->num_entry].key = target->parent_key;
 				sibling->entry[sibling->num_entry].child = proc_list[0].child;
 			}
-			else if (gid < half_f(sibling->num_entry + target_branch_index - 1)
+			else if (gid < half_f(sibling->num_entry + proc_num_entry - 1)
 				- sibling->num_entry + 1)
 			{
 				sibling->entry[sibling->num_entry + gid] = proc_list[gid];
 			}
-			else if (gid == half_f(sibling->num_entry + target_branch_index - 1)
+			else if (gid == half_f(sibling->num_entry + proc_num_entry - 1)
 				- sibling->num_entry + 1)
 			{
 				target->entry[0].key = KEY_MIN;
@@ -1023,22 +1023,22 @@ _clbptWPacketGroupHandler(
 			}
 			else if (gid < proc_num_entry) {
 				target->entry[gid - half_f(sibling->num_entry + 
-					target_branch_index - 1) + sibling->num_entry - 1] = 
+					proc_num_entry - 1) + sibling->num_entry - 1] = 
 					proc_list[gid];
 			}
 			if (gid == 0) {
 				sibling->num_entry = half_f(sibling->num_entry + 
-					target_branch_index - 1) + 1;
+					proc_num_entry - 1) + 1;
 				del[0].target = parent;
 				del[0].key = target->parent_key;
 				ins[0].target = parent;
 				ins[0].entry.key = proc_list[half_f(sibling->num_entry + 
-					target_branch_index - 1) - sibling->num_entry + 1].key;
+					proc_num_entry - 1) - sibling->num_entry + 1].key;
 				ins[0].entry.child = (uintptr_t)target;
 				target->parent_key = proc_list[half_f(sibling->num_entry + 
-					target_branch_index - 1) - sibling->num_entry + 1].key;
+					proc_num_entry - 1) - sibling->num_entry + 1].key;
 				target->num_entry = proc_num_entry - half_f(sibling->num_entry + 
-					target_branch_index - 1) + sibling->num_entry - 1;
+					proc_num_entry - 1) + sibling->num_entry - 1;
 			}
 			if (sibling == (clbpt_int_node *)(parent->entry[0].child))
 			{
@@ -1089,6 +1089,90 @@ _clbptWPacketGroupHandler(
 		sibling = target;
 	}
 }
+
+/*
+void
+_clbptWPacketLeftmostChildHandler(
+	__local clbpt_entry *proc_list,
+	__global struct clheap *heap,
+	__global clbpt_del_pkt *del,
+	clbpt_int_node *parent,
+	clbpt_int_node *target,
+	clbpt_int_node *right_sibling
+	)
+{
+	if (right_sibling == 0)
+		return;
+	if (target->num_entry < half_c(CLBPT_ORDER)) {
+		if (target->num_entry + right_sibling->num_entry < 
+			2 * half_c(CLBPT_ORDER))
+		{
+			// Merge
+			if (gid == 0) {
+				target->entry[target->num_entry].key = 
+					right_sibling->parent_key;
+				target->entry[target->num_entry].child =
+					right_sibling->entry[0].child;
+			}
+			else if (gid < right_sibling->num_entry) {
+				target->entry[target->num_entry + gid] = 
+					right_sibling->entry[gid];
+			}
+			if (gid == 0) {
+				target->num_entry += right_sibling->num_entry;
+				del[0].target = parent;
+				del[0].key = right_sibling->parent_key;
+				free(heap, (uintptr_t)right_sibling);
+			}
+		}
+		else {
+			// Borrow
+			if (gid == 0) {
+				target->entry[target->num_entry].key = 
+					right_sibling->parent_key;
+				target->entry[target->num_entry].child = 
+					right_sibling->entry[0].child;
+			}
+			else if (gid < half_f(target->num_entry + 
+				right_sibling->num_entry - 1) - target->num_entry + 1)
+			{
+				target->entry[target->num_entry + gid] = 
+					right_sibling->entry[gid];
+			}
+			else if (gid == half_f(target->num_entry + 
+				right_sibling->num_entry - 1) - target->num_entry + 1)
+			{
+				right_sibling->entry[0].key = KEY_MIN;
+				right_sibling->entry[0].child = right_sibling->entry[gid].child;
+			}
+			else if (gid < proc_num_entry) {
+				target->entry[gid - half_f(sibling->num_entry + 
+					proc_num_entry - 1) + sibling->num_entry - 1] = 
+					proc_list[gid];
+			}
+			if (gid == 0) {
+				sibling->num_entry = half_f(sibling->num_entry + 
+					proc_num_entry - 1) + 1;
+				del[0].target = parent;
+				del[0].key = target->parent_key;
+				ins[0].target = parent;
+				ins[0].entry.key = proc_list[half_f(sibling->num_entry + 
+					proc_num_entry - 1) - sibling->num_entry + 1].key;
+				ins[0].entry.child = (uintptr_t)target;
+				target->parent_key = proc_list[half_f(sibling->num_entry + 
+					proc_num_entry - 1) - sibling->num_entry + 1].key;
+				target->num_entry = proc_num_entry - half_f(sibling->num_entry + 
+					proc_num_entry - 1) + sibling->num_entry - 1;
+			}
+			if (sibling == (clbpt_int_node *)(parent->entry[0].child))
+			{
+				right_sibling = target;
+			}
+			sibling = target;
+		}
+	}
+}
+*/
 
 __kernel void
 _clbptWPacketBufferRootHandler(
