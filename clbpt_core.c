@@ -59,17 +59,19 @@ void show_leaf(clbpt_leaf_node *leaf);	// function for testing
 int _clbptCreateKernels(clbpt_platform platform)
 {
 	int i;
-	platform->kernels = (cl_kernel *)malloc(sizeof(cl_kernel) * NUM_KERNELS);
+	kernels = (cl_kernel *)malloc(sizeof(cl_kernel) * NUM_KERNELS);
 
 	for(i = 0; i < NUM_KERNELS; i++)
 	{
 		kernels[i] = clCreateKernel(platform->program, kernels_name[i], &err);
 		if(err != CL_SUCCESS)
 		{
-			printf("kernel error %d\n",err);
+			printf("kernel error %d\n", err);
 			return err;
 		}
 	}
+	platform->kernels = kernels;
+
 	return CL_SUCCESS;
 }
 
@@ -77,7 +79,15 @@ int _clbptInitialize(clbpt_tree tree)
 {
 	root = tree->root;
 	property = tree->property;
+	context = tree->platform->context;
 	kernels = tree->platform->kernels;
+
+	// create heap for kma
+	cl_device_id cid = tree->platform->devices[0];
+	cl_context ctx = tree->platform->context;
+	cl_command_queue cq = tree->platform->queue;
+	cl_program prg = tree->platform->program;
+	tree->heap = kma_create(cid, ctx, cq, prg, 2048);
 
 	// create leaf node
 	tree->leaf = (clbpt_leaf_node *)malloc(sizeof(clbpt_leaf_node));
@@ -103,12 +113,16 @@ int _clbptInitialize(clbpt_tree tree)
 
 	// get CL_DEVICE_MAX_WORK_ITEM_SIZES	
 	size_t max_work_item_sizes[3];
-	err = clGetDeviceInfo(tree->platform->devices[0], CL_DEVICE_MAX_WORK_ITEM_SIZES, 0, NULL, &cb);
-	assert(err == 0);
-	err = clGetDeviceInfo(tree->platform->devices[0], CL_DEVICE_MAX_WORK_ITEM_SIZES, cb, &max_work_item_sizes[0], NULL);
-	assert(err == 0);
-	local_work_size = max_work_item_sizes[0];	// one dimension
-	order = local_work_size/2;
+	//err = clGetDeviceInfo(tree->platform->devices[0], CL_DEVICE_MAX_WORK_ITEM_SIZES, 0, NULL, &cb);
+	//assert(err == 0);
+	//err = clGetDeviceInfo(tree->platform->devices[0], CL_DEVICE_MAX_WORK_ITEM_SIZES, sizeof(max_work_item_sizes), &max_work_item_sizes[0], NULL);
+	//assert(err == 0);
+	//fprintf( stderr, "\t\tDevice Maximum Work Item Sizes = %zu x %zu x %zu\n", max_work_item_sizes[0], max_work_item_sizes[1], max_work_item_sizes[2] );
+	//local_work_size = max_work_item_sizes[0];	// one dimension
+	//order = local_work_size/2;
+
+	// DEBUG used
+	//fprintf(stderr, "MaxWorkSize GOT\n");
 
 	// clmem initialize
 
@@ -130,6 +144,9 @@ int _clbptInitialize(clbpt_tree tree)
 	assert(err == 0);	
 	//tree->property = (clbpt_property)clEnqueueMapBuffer(queue, property_d, CL_TRUE, CL_MAP_READ, 0, sizeof(clbpt_property), 0, NULL, NULL, &err);
 	//assert(err == 0);
+
+	// DEBUG used
+	fprintf(stderr, "Initialize SUCCESS\n");
 
 	return CL_SUCCESS;
 }

@@ -96,11 +96,11 @@ typedef struct _clbpt_platform *clbpt_platform;
 struct _clbpt_tree {
 	clbpt_platform platform;
 	pthread_t *handler;
-    pthread_mutex_t buffer_mutex;
-    pthread_mutex_t loop_mutex;
+	pthread_mutex_t buffer_mutex;
+	pthread_mutex_t loop_mutex;
 
-    int buf_status;
-    int fetch_buf_index;
+	int buf_status;
+	int fetch_buf_index;
 	clbpt_packet *fetch_buf;
 	clbpt_packet *wait_buf;
 	clbpt_packet *execute_buf;
@@ -110,7 +110,7 @@ struct _clbpt_tree {
 
 	int degree;
 	size_t record_size;
-	cl_command_queue queue;
+	cl_command_queue queue;	// What for ?
 
 	clbpt_property property;
 	cl_mem heap;

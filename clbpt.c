@@ -14,7 +14,8 @@
 #define CLBPT_PACKET_INSERT(x,y) (((( (clbpt_packet)(x) | 0x80000000 ) << 32 ) & 0xFFFFFFFF00000000 ) | (uint32_t)(y) )
 #define CLBPT_PACKET_DELETE(x) (((( (clbpt_packet)(x) | 0x80000000 ) << 32 ) & 0xFFFFFFFF00000000 ))
 
-void _clbpt_load_program(clbpt_platform platform, char *filename) {
+void _clbpt_load_program(clbpt_platform platform, char *filename)
+{
 	FILE *f = fopen(filename, "r");
 	cl_int err;
 	if (f == NULL)exit(-1);
@@ -31,7 +32,8 @@ void _clbpt_load_program(clbpt_platform platform, char *filename) {
 		printf("error load program : %d\n", err);
 	if (platform->program == NULL)
 		printf("error load program\n");
-	if ((err = clBuildProgram(platform->program, 1, platform->devices, "-cl-std=CL2.0 -cl-opt-disable -I include/ -I /home/mangohot/KMA  -I /opt/AMDAPPSDK-3.0-0-Beta/include/ -I /usr/include/linux/ -I /usr/include/x86_64-linux-gnu/", 0, 0)) != CL_SUCCESS) {
+	if ((err = clBuildProgram(platform->program, 1, platform->devices, "-cl-std=CL2.0 -cl-opt-disable -I include/ -I /home/mangohot/KMA  -I /opt/AMDAPPSDK-3.0-0-Beta/include/ -I /usr/include/linux/ -I /usr/include/x86_64-linux-gnu/", 0, 0)) != CL_SUCCESS)
+	{
 		size_t len;
 		char *buffer;
 		clGetProgramBuildInfo(platform->program, platform->devices[0], CL_PROGRAM_BUILD_LOG, 0, NULL, &len);
@@ -42,27 +44,32 @@ void _clbpt_load_program(clbpt_platform platform, char *filename) {
 	}
 }
 
-void * _clbptHandler(void *tree) {
-	while (1) {
+void * _clbptHandler(void *tree)
+{
+	while (1)
+	{
 		pthread_mutex_lock(&(((clbpt_tree)tree)->loop_mutex));
 		_clbptSelectFromWaitBuffer((clbpt_tree)tree);
 		_clbptHandleExecuteBuffer((clbpt_tree)tree);
 	}
 }
 
-int _clbptLockWaitBuffer(clbpt_tree tree) {
+int _clbptLockWaitBuffer(clbpt_tree tree)
+{
 	int err = pthread_mutex_lock(&(tree->buffer_mutex));
 	if (err != CLBPT_SUCCESS)return err;
 	return CLBPT_SUCCESS;
 }
 
-int _clbptUnlockWaitBuffer(clbpt_tree tree) {
+int _clbptUnlockWaitBuffer(clbpt_tree tree)
+{
 	int err = pthread_mutex_unlock(&(tree->buffer_mutex));
 	if (err != CLBPT_SUCCESS)return err;
 	return CLBPT_SUCCESS;
 }
 
-int _clbptBufferExchange(clbpt_tree tree) {
+int _clbptBufferExchange(clbpt_tree tree)
+{
 	int err = _clbptLockWaitBuffer(tree);
 	if (err != CLBPT_SUCCESS) 
 		return err;
@@ -86,7 +93,8 @@ int clbptEnqueueFecthBuffer(
 	clbpt_packet packet,
 	void *records)
 {
-	if (tree->fetch_buf_index >= CLBPT_BUF_SIZE) {
+	if (tree->fetch_buf_index >= CLBPT_BUF_SIZE)
+	{
 		_clbptBufferExchange(tree);
 	}
 	tree->fetch_buf[tree->fetch_buf_index] = packet;
@@ -103,7 +111,6 @@ int clbptCreatePlatform(
 	clbpt_platform dst_platform;
 	dst_platform = malloc(sizeof(struct _clbpt_platform));
 	dst_platform->context = context;
-	//dst_platform->kernels = calloc(sizeof(cl_kernel),64)			;
 	err = clGetContextInfo(context, CL_CONTEXT_DEVICES, 0, NULL, &cb);
 	if (err != CL_SUCCESS)
 		printf("context error\n");
@@ -120,15 +127,14 @@ int clbptCreatePlatform(
 	if (err != CL_SUCCESS)
 		printf("device error\n");
 	_clbpt_load_program(dst_platform, "/home/mangohot/CLBplustree/clbpt.cl");
-	//dst_platform->kernels[CLBPT_INITIALIZE] = clCreateKernel(dst_platform->program,"_clbptPacketSort",&err);
-	//if(err!=0)printf("kernel error %d\n",err);
 	_clbptCreateKernels(dst_platform);
 	dst_platform->queue = clCreateCommandQueueWithProperties(
 		context,
 		devices[0],
 		0,
 		&err);
-	if (err != CL_SUCCESS || dst_platform->queue == 0) {
+	if (err != CL_SUCCESS || dst_platform->queue == 0)
+	{
 		clReleaseContext(context);
 		return err;
 	}
@@ -165,7 +171,8 @@ int clbptCreateTree(
 	return CLBPT_SUCCESS;
 }
 
-int clbptReleaseTree(clbpt_tree tree) {
+int clbptReleaseTree(clbpt_tree tree)
+{
 	if (tree == NULL) 
 		return CLBPT_SUCCESS;
 	if (tree->fetch_buf != NULL) 
@@ -185,7 +192,8 @@ int clbptEnqueueSearches(
 	void *records)
 {
 	int i, err;
-	for (i = 0; i < num_keys; i++) {
+	for (i = 0; i < num_keys; i++)
+	{
 		err = clbptEnqueueFecthBuffer(
 			tree,
 			CLBPT_PACKET_SEARCH(keys[i]),
@@ -203,7 +211,8 @@ int clbptEnqueueRangeSearches(
 	void **record_list) 
 {
 	int i, err;
-	for (i = 0; i < num_keys; i++) {
+	for (i = 0; i < num_keys; i++)
+	{
 		err = clbptEnqueueFecthBuffer(
 			tree,
 			CLBPT_PACKET_RANGE(l_keys[i], u_keys[i]),
@@ -220,7 +229,8 @@ int clbptEnqueueInsertions(
 	void *records)
 {
 	int i, err;
-	for (i = 0; i < num_inserts; i++) {
+	for (i = 0; i < num_inserts; i++)
+	{
 		err = clbptEnqueueFecthBuffer(
 			tree,
 			CLBPT_PACKET_INSERT(keys[i], 0),
@@ -236,7 +246,8 @@ int clbptEnqueueDeletions(
 	CLBPT_KEY_TYPE *keys) 
 {
 	int i, err;
-	for (i = 0; i < num_deletes; i++) {
+	for (i = 0; i < num_deletes; i++)
+	{
 		err = clbptEnqueueFecthBuffer(
 			tree,
 			CLBPT_PACKET_DELETE(keys[i]),
@@ -246,20 +257,20 @@ int clbptEnqueueDeletions(
 	return CLBPT_SUCCESS;
 }
 
-int clbptFlush(clbpt_tree tree) {
+int clbptFlush(clbpt_tree tree)
+{
 	int err = _clbptBufferExchange(tree);
 	if (err != CLBPT_SUCCESS) return err;
 	return CLBPT_SUCCESS;
 }
 
-int clbptFinish(clbpt_tree tree) {
+int clbptFinish(clbpt_tree tree)
+{
 	int err = clbptFlush(tree);
-	if (err != CLBPT_SUCCESS) 
-		return err;
+	if (err != CLBPT_SUCCESS) return err;
 	err = _clbptLockWaitBuffer(tree);
 	err = _clbptUnlockWaitBuffer(tree);
 	pthread_mutex_lock(&(tree->loop_mutex));
-	if (err != CLBPT_SUCCESS) 
-		return err;
+	if (err != CLBPT_SUCCESS) return err;
 	return CLBPT_SUCCESS;
 }

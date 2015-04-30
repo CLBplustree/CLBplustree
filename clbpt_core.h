@@ -6,6 +6,7 @@
 #define __CLBPT_CORE_H_INCLUDED
 
 #include "clbpt_type.h"
+#include "kma.h"
 
 #define PACKET_NOP (0x3FFFFFFF00000000L)
 #define getKeyFromPacket(X) (int)(((X) >> 31) & 0x80000000 | ((X) >> 32) & 0x7FFFFFFF)
