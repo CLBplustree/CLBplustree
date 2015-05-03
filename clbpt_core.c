@@ -43,7 +43,8 @@ static void **addr;
 
 // Size and Order
 static size_t global_work_size;
-static size_t local_work_size = 256;	// get this value in _clbptInitialize
+static size_t local_work_size;
+static size_t max_local_work_size;		// get this value in _clbptInitialize
 static uint32_t order  = CLBPT_ORDER;	// get this value in _clbptInitialize
 static uint32_t buf_size = CLBPT_BUF_SIZE;
 
@@ -55,6 +56,39 @@ int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_add
 int insert_leaf(int32_t key, void *node_addr);
 int delete_leaf(int32_t key, void *node_addr);
 void show_leaf(clbpt_leaf_node *leaf);	// function for testing
+
+int _clbptCreateQueues(clbpt_platform platform)
+{
+	cl_queue_properties queue_device_prop[] = {
+		CL_QUEUE_PROPERTIES,
+		(cl_command_queue_properties)(CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE | CL_QUEUE_ON_DEVICE | CL_QUEUE_ON_DEVICE_DEFAULT),
+		0
+	};
+
+	platform->queue = clCreateCommandQueueWithProperties(
+		platform->context,
+		platform->devices[0],
+		NULL,
+		&err
+	);
+	platform->queue_device = clCreateCommandQueueWithProperties(
+		platform->context,
+		platform->devices[0],
+		queue_device_prop,
+		&err
+	);
+
+	if (err != CL_SUCCESS || platform->queue == 0 || platform->queue_device == 0)
+	{
+		clReleaseContext(platform->context);
+		fprintf(stderr, "Error occurs when creating commandQueues\n");
+		return err;
+	}
+	else
+	{
+		return CL_SUCCESS;
+	}
+}
 
 int _clbptCreateKernels(clbpt_platform platform)
 {
@@ -79,6 +113,7 @@ int _clbptInitialize(clbpt_tree tree)
 {
 	root = tree->root;
 	property = tree->property;
+	queue = tree->platform->queue;
 	context = tree->platform->context;
 	kernels = tree->platform->kernels;
 
@@ -113,16 +148,14 @@ int _clbptInitialize(clbpt_tree tree)
 
 	// get CL_DEVICE_MAX_WORK_ITEM_SIZES	
 	size_t max_work_item_sizes[3];
-	//err = clGetDeviceInfo(tree->platform->devices[0], CL_DEVICE_MAX_WORK_ITEM_SIZES, 0, NULL, &cb);
-	//assert(err == 0);
-	//err = clGetDeviceInfo(tree->platform->devices[0], CL_DEVICE_MAX_WORK_ITEM_SIZES, sizeof(max_work_item_sizes), &max_work_item_sizes[0], NULL);
-	//assert(err == 0);
-	//fprintf( stderr, "\t\tDevice Maximum Work Item Sizes = %zu x %zu x %zu\n", max_work_item_sizes[0], max_work_item_sizes[1], max_work_item_sizes[2] );
-	//local_work_size = max_work_item_sizes[0];	// one dimension
-	//order = local_work_size/2;
-
-	// DEBUG used
-	//fprintf(stderr, "MaxWorkSize GOT\n");
+	err = clGetDeviceInfo(tree->platform->devices[0], CL_DEVICE_MAX_WORK_ITEM_SIZES, 0, NULL, &cb);
+	assert(err == 0);
+	err = clGetDeviceInfo(tree->platform->devices[0], CL_DEVICE_MAX_WORK_ITEM_SIZES, sizeof(max_work_item_sizes), &max_work_item_sizes[0], NULL);
+	assert(err == 0);
+	//fprintf(stderr, "Device Maximum Work Item Sizes = %zu x %zu x %zu\n", max_work_item_sizes[0], max_work_item_sizes[1], max_work_item_sizes[2]);
+	max_local_work_size = max_work_item_sizes[0];	// one dimension
+	order = max_local_work_size/2;
+	fprintf(stderr, "Tree Order = %d\n", order);
 
 	// clmem initialize
 
@@ -139,7 +172,7 @@ int _clbptInitialize(clbpt_tree tree)
 	assert(err == 0);
 
 	// Initialize
-	global_work_size = 1;
+	global_work_size = local_work_size = 1;
 	err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
 	assert(err == 0);	
 	//tree->property = (clbpt_property)clEnqueueMapBuffer(queue, property_d, CL_TRUE, CL_MAP_READ, 0, sizeof(clbpt_property), 0, NULL, NULL, &err);
@@ -198,6 +231,7 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 	kernel = kernels[CLBPT_PACKET_SELECT];
 	isEmpty = 1;
 	global_work_size = buf_size;
+	local_work_size = max_local_work_size;
 	err = clEnqueueWriteBuffer(queue, isEmpty_d, CL_TRUE, 0, sizeof(uint8_t), &isEmpty, 0, NULL, NULL);
 	assert(err == 0);
 	err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
@@ -214,7 +248,7 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 
 	// PacketSort
 	kernel = kernels[CLBPT_PACKET_SORT];
-	global_work_size = local_work_size;
+	global_work_size = local_work_size = max_local_work_size;
 	err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
 	assert(err == 0);
 	tree->execute_buf = (clbpt_packet *)clEnqueueMapBuffer(queue, execute_buf_d, CL_TRUE, CL_MAP_READ, 0, buf_size * sizeof(clbpt_packet), 0, NULL, NULL, &err);
@@ -252,6 +286,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 
 	// Search
 	global_work_size = buf_size;
+	local_work_size = max_local_work_size;
 	err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
 	assert(err == 0);
 	tree->node_addr_buf = (void **)clEnqueueMapBuffer(queue, result_buf_d, CL_TRUE, CL_MAP_READ, 0, buf_size * sizeof(void *), 0, NULL, NULL, &err);
@@ -357,6 +392,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 
 	// WPacketInit
 	global_work_size = num_ins > num_del ? num_ins : num_del;
+	local_work_size = max_local_work_size;
 	err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
 	assert(err == 0);	
 

@@ -14,7 +14,7 @@
 #define CLBPT_PACKET_INSERT(x,y) (((( (clbpt_packet)(x) | 0x80000000 ) << 32 ) & 0xFFFFFFFF00000000 ) | (uint32_t)(y) )
 #define CLBPT_PACKET_DELETE(x) (((( (clbpt_packet)(x) | 0x80000000 ) << 32 ) & 0xFFFFFFFF00000000 ))
 
-void _clbpt_load_program(clbpt_platform platform, char *filename)
+void _clbptLoadProgram(clbpt_platform platform, char *filename)
 {
 	FILE *f = fopen(filename, "r");
 	cl_int err;
@@ -106,11 +106,17 @@ int clbptCreatePlatform(
 	clbpt_platform *dst_platform_ptr,
 	cl_context context) 
 {
+	int i;
 	cl_int err;
 	size_t cb;
+	cl_uint num_devices;
+	char *devName;
+	char *devVer;
 	clbpt_platform dst_platform;
 	dst_platform = malloc(sizeof(struct _clbpt_platform));
 	dst_platform->context = context;
+
+	// get a list of devices
 	err = clGetContextInfo(context, CL_CONTEXT_DEVICES, 0, NULL, &cb);
 	if (err != CL_SUCCESS)
 		printf("context error\n");
@@ -123,21 +129,48 @@ int clbptCreatePlatform(
 		printf("context error\n");
 	if (context == NULL)
 		printf("no context\n");
-	err = clGetDeviceInfo(devices[0], CL_DEVICE_NAME, 0, NULL, &cb);
-	if (err != CL_SUCCESS)
-		printf("device error\n");
-	_clbpt_load_program(dst_platform, "/home/mangohot/CLBplustree/clbpt.cl");
+
+	// get the number of devices
+	clGetContextInfo(context, CL_CONTEXT_NUM_DEVICES, 0, NULL, &cb);
+	clGetContextInfo(context, CL_CONTEXT_NUM_DEVICES, cb, &num_devices, 0);
+	printf("There are %d device(s) in the context\n", num_devices);
+	dst_platform->num_devices = num_devices;
+
+	// show devices info
+	for(i = 0; i < num_devices; i++)
+	{
+		// get device name
+		clGetDeviceInfo(devices[i], CL_DEVICE_NAME, 0, NULL, &cb);
+		devName = (char*) malloc(sizeof(char) * cb);
+		clGetDeviceInfo(devices[i], CL_DEVICE_NAME, cb, &devName[0], NULL);
+		devName[cb] = 0;
+		printf("Device: %s", devName);
+		free(devName);
+		
+		// get device supports version
+		clGetDeviceInfo(devices[i], CL_DEVICE_VERSION, 0, NULL, &cb);
+		devVer = (char*) malloc(sizeof(char) * cb);
+		clGetDeviceInfo(devices[i], CL_DEVICE_VERSION, cb, &devVer[0], NULL);
+		devVer[cb] = 0;
+		printf(" (supports %s)\n", devVer);
+		free(devVer);
+	}
+
+	_clbptLoadProgram(dst_platform, "/home/mangohot/CLBplustree/clbpt.cl");
 	_clbptCreateKernels(dst_platform);
+	_clbptCreateQueues(dst_platform);
+	/*
 	dst_platform->queue = clCreateCommandQueueWithProperties(
 		context,
 		devices[0],
-		0,
+		NULL,
 		&err);
 	if (err != CL_SUCCESS || dst_platform->queue == 0)
 	{
 		clReleaseContext(context);
 		return err;
 	}
+	*/
 	*dst_platform_ptr = dst_platform;
 	return CLBPT_SUCCESS;
 }
@@ -182,6 +215,9 @@ int clbptReleaseTree(clbpt_tree tree)
 	if (tree->result_buf != NULL) 
 		free(tree->result_buf);
 	free(tree);
+
+	_clbptReleaseLeaf(tree);
+
 	return CLBPT_SUCCESS;
 }
 

@@ -24,6 +24,13 @@
 #define leftMostNodeBorrowMerge -1
 
 /**
+ * @brief Create command queues of clbpt
+ * @param platform.
+ * @return Success or not.
+ */
+int _clbptCreateQueues(clbpt_platform platform);
+
+/**
  * @brief Create kernels of clbpt
  * @param platform.
  * @return Success or not.
