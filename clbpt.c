@@ -46,11 +46,20 @@ void _clbptLoadProgram(clbpt_platform platform, char *filename)
 
 void * _clbptHandler(void *tree)
 {
+	int isEmpty;
+
 	while (1)
 	{
 		pthread_mutex_lock(&(((clbpt_tree)tree)->loop_mutex));
-		_clbptSelectFromWaitBuffer((clbpt_tree)tree);
-		_clbptHandleExecuteBuffer((clbpt_tree)tree);
+		do
+		{
+			printf("select START\n");
+			isEmpty = _clbptSelectFromWaitBuffer((clbpt_tree)tree);
+			printf("isEmpty = %d\n", isEmpty);
+			printf("select COMPLETE\n");
+			_clbptHandleExecuteBuffer((clbpt_tree)tree);
+		}
+		while (isEmpty != 1);
 	}
 }
 
@@ -80,7 +89,7 @@ int _clbptBufferExchange(clbpt_tree tree)
 	void **result_buf_temp = tree->result_buf;
 	tree->result_buf = tree->execute_result_buf;
 	tree->execute_result_buf = result_buf_temp;
-	tree->fetch_buf_index = 0;
+	//tree->fetch_buf_index = 0;
 	err = _clbptUnlockWaitBuffer(tree);
 	if (err != CLBPT_SUCCESS) 
 		return err;
@@ -98,6 +107,9 @@ int clbptEnqueueFecthBuffer(
 		_clbptBufferExchange(tree);
 	}
 	tree->fetch_buf[tree->fetch_buf_index] = packet;
+
+	// DEBUG
+	fprintf(stderr, "%d\n", tree->fetch_buf_index);
 	tree->result_buf[tree->fetch_buf_index++] = records;
 	return CLBPT_SUCCESS;
 }
@@ -106,71 +118,17 @@ int clbptCreatePlatform(
 	clbpt_platform *dst_platform_ptr,
 	cl_context context) 
 {
-	int i;
 	cl_int err;
 	size_t cb;
-	cl_uint num_devices;
-	char *devName;
-	char *devVer;
 	clbpt_platform dst_platform;
 	dst_platform = malloc(sizeof(struct _clbpt_platform));
 	dst_platform->context = context;
 
-	// get a list of devices
-	err = clGetContextInfo(context, CL_CONTEXT_DEVICES, 0, NULL, &cb);
-	if (err != CL_SUCCESS)
-		printf("context error\n");
-	if (context == NULL)
-		printf("no context\n");
-	cl_device_id *devices = calloc(sizeof(cl_device_id), cb);
-	dst_platform->devices = devices;
-	err = clGetContextInfo(context, CL_CONTEXT_DEVICES, cb, &devices[0], 0);
-	if (err != CL_SUCCESS)
-		printf("context error\n");
-	if (context == NULL)
-		printf("no context\n");
-
-	// get the number of devices
-	clGetContextInfo(context, CL_CONTEXT_NUM_DEVICES, 0, NULL, &cb);
-	clGetContextInfo(context, CL_CONTEXT_NUM_DEVICES, cb, &num_devices, 0);
-	printf("There are %d device(s) in the context\n", num_devices);
-	dst_platform->num_devices = num_devices;
-
-	// show devices info
-	for(i = 0; i < num_devices; i++)
-	{
-		// get device name
-		clGetDeviceInfo(devices[i], CL_DEVICE_NAME, 0, NULL, &cb);
-		devName = (char*) malloc(sizeof(char) * cb);
-		clGetDeviceInfo(devices[i], CL_DEVICE_NAME, cb, &devName[0], NULL);
-		devName[cb] = 0;
-		printf("Device: %s", devName);
-		free(devName);
-		
-		// get device supports version
-		clGetDeviceInfo(devices[i], CL_DEVICE_VERSION, 0, NULL, &cb);
-		devVer = (char*) malloc(sizeof(char) * cb);
-		clGetDeviceInfo(devices[i], CL_DEVICE_VERSION, cb, &devVer[0], NULL);
-		devVer[cb] = 0;
-		printf(" (supports %s)\n", devVer);
-		free(devVer);
-	}
-
+	_clbptGetDevices(dst_platform);
 	_clbptLoadProgram(dst_platform, "/home/mangohot/CLBplustree/clbpt.cl");
 	_clbptCreateKernels(dst_platform);
 	_clbptCreateQueues(dst_platform);
-	/*
-	dst_platform->queue = clCreateCommandQueueWithProperties(
-		context,
-		devices[0],
-		NULL,
-		&err);
-	if (err != CL_SUCCESS || dst_platform->queue == 0)
-	{
-		clReleaseContext(context);
-		return err;
-	}
-	*/
+
 	*dst_platform_ptr = dst_platform;
 	return CLBPT_SUCCESS;
 }

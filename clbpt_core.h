@@ -24,6 +24,13 @@
 #define leftMostNodeBorrowMerge -1
 
 /**
+ * @brief Get Devices' info of clbpt
+ * @param platform.
+ * @return Success or not.
+ */
+int _clbptGetDevices(clbpt_platform platform);
+
+/**
  * @brief Create command queues of clbpt
  * @param platform.
  * @return Success or not.

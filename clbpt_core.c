@@ -9,10 +9,11 @@
 // Static Global Variables
 static cl_int err;
 static size_t cb;
-static cl_context context;
-static cl_command_queue queue;
-static cl_kernel *kernels;
-static cl_kernel kernel;
+//static cl_context context;
+//static cl_command_queue queue;
+//static cl_kernel *kernels;
+//static cl_kernel kernel;
+/*
 static char kernels_name[NUM_KERNELS][35] = {
 	"_clbptPacketSelect",
 	"_clbptPacketSort",
@@ -25,14 +26,13 @@ static char kernels_name[NUM_KERNELS][35] = {
 	"_clbptWPacketCompact",
 	"_clbptWPacketSuperGroupHandler"
 };
+*/
 
 static cl_mem wait_buf_d, execute_buf_d, result_buf_d;
 static cl_mem execute_buf_d_temp, result_buf_d_temp;
 
-static clbpt_property property;
+//static clbpt_property property;
 static cl_mem property_d;
-
-static clbpt_int_node *root;
 
 // Insert and Delete Packet (to internal node)
 static clbpt_ins_pkt *ins;
@@ -56,6 +56,50 @@ int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_add
 int insert_leaf(int32_t key, void *node_addr);
 int delete_leaf(int32_t key, void *node_addr);
 void show_leaf(clbpt_leaf_node *leaf);	// function for testing
+
+int _clbptGetDevices(clbpt_platform platform)
+{
+	cl_uint num_devices;
+	cl_context context = platform->context;
+	cl_device_id *devices;
+	char *devName;
+	char *devVer;
+	int i;
+
+	// get a list of devices
+	clGetContextInfo(context, CL_CONTEXT_DEVICES, 0, NULL, &cb);
+	devices = (cl_device_id *)malloc(sizeof(cl_device_id) * cb);
+	platform->devices = devices;
+	clGetContextInfo(context, CL_CONTEXT_DEVICES, cb, &devices[0], 0);
+
+	// get the number of devices
+	clGetContextInfo(context, CL_CONTEXT_NUM_DEVICES, 0, NULL, &cb);
+	clGetContextInfo(context, CL_CONTEXT_NUM_DEVICES, cb, &num_devices, 0);
+	printf("There are %d device(s) in the context\n", num_devices);
+	platform->num_devices = num_devices;
+
+	// show devices info
+	for(i = 0; i < num_devices; i++)
+	{
+		// get device name
+		clGetDeviceInfo(devices[i], CL_DEVICE_NAME, 0, NULL, &cb);
+		devName = (char*)malloc(sizeof(char) * cb);
+		clGetDeviceInfo(devices[i], CL_DEVICE_NAME, cb, &devName[0], NULL);
+		devName[cb] = 0;
+		printf("Device: %s", devName);
+		free(devName);
+		
+		// get device supports version
+		clGetDeviceInfo(devices[i], CL_DEVICE_VERSION, 0, NULL, &cb);
+		devVer = (char*)malloc(sizeof(char) * cb);
+		clGetDeviceInfo(devices[i], CL_DEVICE_VERSION, cb, &devVer[0], NULL);
+		devVer[cb] = 0;
+		printf(" (supports %s)\n", devVer);
+		free(devVer);
+	}
+
+	return CL_SUCCESS;
+}
 
 int _clbptCreateQueues(clbpt_platform platform)
 {
@@ -93,7 +137,19 @@ int _clbptCreateQueues(clbpt_platform platform)
 int _clbptCreateKernels(clbpt_platform platform)
 {
 	int i;
-	kernels = (cl_kernel *)malloc(sizeof(cl_kernel) * NUM_KERNELS);
+	cl_kernel *kernels = (cl_kernel *)malloc(sizeof(cl_kernel) * NUM_KERNELS);
+	char kernels_name[NUM_KERNELS][35] = {
+		"_clbptPacketSelect",
+		"_clbptPacketSort",
+		"_clbptInitialize",
+		"_clbptSearch",
+		"_clbptWPacketInit",
+		"_clbptWPacketBufferHandler",
+		"_clbptWPacketBufferRootHandler",
+		"_clbptWPacketBufferPreRootHandler",
+		"_clbptWPacketCompact",
+		"_clbptWPacketSuperGroupHandler"
+	};
 
 	for(i = 0; i < NUM_KERNELS; i++)
 	{
@@ -111,18 +167,17 @@ int _clbptCreateKernels(clbpt_platform platform)
 
 int _clbptInitialize(clbpt_tree tree)
 {
-	root = tree->root;
-	property = tree->property;
-	queue = tree->platform->queue;
-	context = tree->platform->context;
-	kernels = tree->platform->kernels;
+	clbpt_int_node	*root = tree->root;
+	clbpt_property	property = tree->property;
+	cl_device_id	device = tree->platform->devices[0];
+	cl_context		context = tree->platform->context;
+	cl_command_queue queue = tree->platform->queue;
+	cl_program		program = tree->platform->program;
+	cl_kernel		*kernels = tree->platform->kernels;
+	cl_kernel		kernel;
 
 	// create heap for kma
-	cl_device_id cid = tree->platform->devices[0];
-	cl_context ctx = tree->platform->context;
-	cl_command_queue cq = tree->platform->queue;
-	cl_program prg = tree->platform->program;
-	tree->heap = kma_create(cid, ctx, cq, prg, 2048);
+	tree->heap = kma_create(device, context, queue, program, 2048);
 
 	// create leaf node
 	tree->leaf = (clbpt_leaf_node *)malloc(sizeof(clbpt_leaf_node));
@@ -148,9 +203,9 @@ int _clbptInitialize(clbpt_tree tree)
 
 	// get CL_DEVICE_MAX_WORK_ITEM_SIZES	
 	size_t max_work_item_sizes[3];
-	err = clGetDeviceInfo(tree->platform->devices[0], CL_DEVICE_MAX_WORK_ITEM_SIZES, 0, NULL, &cb);
+	err = clGetDeviceInfo(device, CL_DEVICE_MAX_WORK_ITEM_SIZES, 0, NULL, &cb);
 	assert(err == 0);
-	err = clGetDeviceInfo(tree->platform->devices[0], CL_DEVICE_MAX_WORK_ITEM_SIZES, sizeof(max_work_item_sizes), &max_work_item_sizes[0], NULL);
+	err = clGetDeviceInfo(device, CL_DEVICE_MAX_WORK_ITEM_SIZES, sizeof(max_work_item_sizes), &max_work_item_sizes[0], NULL);
 	assert(err == 0);
 	//fprintf(stderr, "Device Maximum Work Item Sizes = %zu x %zu x %zu\n", max_work_item_sizes[0], max_work_item_sizes[1], max_work_item_sizes[2]);
 	max_local_work_size = max_work_item_sizes[0];	// one dimension
@@ -188,20 +243,27 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 {
 	unsigned int isEmpty = 1;
 
-	context = tree->platform->context;
-	queue = tree->platform->queue;
-	kernels = tree->platform->kernels;
+	cl_context		context = tree->platform->context;
+	cl_command_queue queue = tree->platform->queue;
+	cl_kernel		*kernels = tree->platform->kernels;
+	cl_kernel		kernel;
 
 	// clmem initialize
-	static cl_mem isEmpty_d;
+	cl_mem isEmpty_d;
 
 	// clmem allocation
 	wait_buf_d = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, buf_size * sizeof(clbpt_packet), tree->wait_buf, &err);
+	assert(err == 0);
 	execute_buf_d = clCreateBuffer(context, 0, buf_size * sizeof(clbpt_packet), NULL, &err);
+	assert(err == 0);
 	result_buf_d = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, buf_size * sizeof(void *), (void *)tree->result_buf, &err);
+	assert(err == 0);
 	execute_buf_d_temp = clCreateBuffer(context, 0, buf_size * sizeof(clbpt_packet), NULL, &err);
+	assert(err == 0);
 	result_buf_d_temp = clCreateBuffer(context, 0, buf_size * sizeof(void *), NULL, &err);
+	assert(err == 0);
 	isEmpty_d = clCreateBuffer(context, 0, sizeof(uint8_t), NULL, &err);
+	assert(err == 0);
 
 	// kernel _clbptPacketSelect
 	kernel = kernels[CLBPT_PACKET_SELECT];
@@ -263,15 +325,15 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 
 int _clbptHandleExecuteBuffer(clbpt_tree tree)
 {
-	context = tree->platform->context;
-	queue = tree->platform->queue;
-	kernels = tree->platform->kernels;
-	//property = tree->property;
+	cl_context		context = tree->platform->context;
+	cl_command_queue queue = tree->platform->queue;
+	cl_kernel		*kernels = tree->platform->kernels;
+	cl_kernel		kernel;
+	//clbpt_property property = tree->property;
 
 	// clmem initialize
 
 	// clmem allocation
-	//property_d = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, sizeof(clbpt_property), tree->property, &err);
 
 	// kernel _clbptSearch
 	kernel = kernels[CLBPT_SEARCH];
