@@ -39,6 +39,7 @@ typedef struct
 	int delete_num;
 } outset;
 
+void ArgParse(int ArgNum, char **ArgStr);
 void helpmsg();
 void optmsg(optset *opts);
 void optcheck(optset *opts);
@@ -55,7 +56,18 @@ using namespace std;
 
 int main(int argc, char **argv)
 {
-	static optset opts = 
+	int i,ArgNum = 0;
+	size_t size;
+	char *ArgStr[128],*line=(char *)calloc(1024,sizeof(char));
+	srand(time(NULL));
+	ArgParse(argc,argv);
+	return 0;
+}
+
+void ArgParse(int ArgNum, char **ArgStr)
+{
+	ArgStr[ArgNum+1]=NULL;
+	optset opts = 
 	{
 		.max = 65535,
 		.min = 0,
@@ -68,12 +80,6 @@ int main(int argc, char **argv)
 		.select_num = 0,
 		.delete_num = 0
 	};
-	if( argc <= 1)
-	{
-		helpmsg();
-		exit(0);
-	}
-	srand(time(NULL));
 	while(1)
 	{
 		char arg;
@@ -93,8 +99,28 @@ int main(int argc, char **argv)
 		{"delete",required_argument,0,'d'},
 		{0,0,0,0}
 		};
-		if((arg = getopt_long(argc,argv,"A:S:E:hM:m:o:vi:s:d:",l_options,&opt_index))==-1)
+		if((arg = getopt_long(ArgNum,ArgStr,"A:S:E:hM:m:o:vi:s:d:",l_options,&opt_index))==-1)
+		{
+			if(opts.verbose)
+				optmsg(&opts);
+			optcheck(&opts);
+			gendata(&opts);
+			if(opts.output!=STDOUT_FILENO)close(opts.output);
 			break;
+/*
+			ArgNum = 0;
+			printf("read argument\n");
+			ArgStr[0]=(char *)"Argument";
+			getline(&line,&size,stdin);
+			ArgStr[1]=strtok(line," ");
+			for(ArgNum = 2; ArgNum < 128 ; ArgNum++)
+			{
+				if((ArgStr[ArgNum]=strtok(NULL," "))==NULL)break;
+			}
+			ArgStr[ArgNum+1]=NULL;
+			printf("end\n");
+*/
+		}
 		switch(arg)
 		{
 			case 'A' :
@@ -135,14 +161,6 @@ int main(int argc, char **argv)
 			break;
 		}
 	}
-
-	if(opts.verbose)
-		optmsg(&opts);
-	optcheck(&opts);
-	gendata(&opts);
-	close(opts.output);
-
-	return 0;
 }
 
 void helpmsg()
@@ -153,6 +171,7 @@ void helpmsg()
 	printf("--max     -M (int)              \n");
 	printf("--min     -m (int)              \n");
 	printf("--mean    -A (int)              \n");
+	printf("--stddev  -S (int)              \n");
 	printf("--num     -n (int)              \n");
 	printf("--method  -E (str)              \n");
 	printf("             uniform            \n");
@@ -236,6 +255,11 @@ void VisualResult(outset *outbuf)
 	int graph[10] = {0};
 	int *buf = outbuf->insertbuf;
 	int num = outbuf->insert_num;
+	if( num < 10 )
+	{
+		dprintf(STDERR_FILENO,"Unable Visualize\n");
+		return;
+	}
 	sort(buf,buf+num);
 	int interval = buf[num-1] - buf[0];
 	for( int i = 0, j = 0 ,x = buf[0]+interval/10 ; x <= buf[num-1] ; x+=interval/10, j++ )
