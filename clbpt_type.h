@@ -99,6 +99,8 @@ struct _clbpt_tree {
 	pthread_t *handler;
 	pthread_mutex_t buffer_mutex;
 	pthread_mutex_t loop_mutex;
+	int close_thread;
+	int is_Complete;
 
 	int buf_status;
 	int fetch_buf_index;
