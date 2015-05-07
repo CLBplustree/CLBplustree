@@ -17,7 +17,7 @@
  * @param context OpenCL context.
  * @return Error code.
  */
-int clbptCreatePlatform(clbpt_platform dst_platform, cl_context context);
+int clbptCreatePlatform(clbpt_platform *dst_platform_ptr, cl_context context);
 
 /**
  * @brief Create a new CLBPT.
@@ -27,7 +27,7 @@ int clbptCreatePlatform(clbpt_platform dst_platform, cl_context context);
  * @param record_size The size of record in byte.
  * @return Error code.
  */
-int clbptCreateTree(clbpt_tree dst_tree, clbpt_platform platform, const int degree, const size_t record_size);
+int clbptCreateTree(clbpt_tree *dst_tree_ptr, clbpt_platform platform, const int degree, const size_t record_size);
 
 /**
  * @brief Release clbpt_tree.

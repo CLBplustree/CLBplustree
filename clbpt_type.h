@@ -96,7 +96,7 @@ typedef struct _clbpt_platform *clbpt_platform;
  
 struct _clbpt_tree {
 	clbpt_platform platform;
-	pthread_t *handler;
+	pthread_t handler;
 	pthread_mutex_t buffer_mutex;
 	pthread_mutex_t loop_mutex;
 	int close_thread;

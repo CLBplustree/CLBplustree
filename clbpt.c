@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include <unistd.h>
 
 #define CLBPT_PACKET_SEARCH(x) ((( (clbpt_packet)(x) << 32 ) & 0x7FFFFFFF00000000 ) | 0x7FFFFFFF )
 #define CLBPT_PACKET_RANGE(x,y) ((( (clbpt_packet)(x)  << 32 ) & 0xFFFFFFFF00000000 ) | ( (uint32_t)(y) | 0x80000000 ) )
@@ -53,24 +54,20 @@ void * _clbptHandler(void *tree)
 
 	while (1)
 	{
-		pthread_mutex_lock(&(((clbpt_tree)tree)->loop_mutex));
-		if(((clbpt_tree)tree)->close_thread)return NULL;
+		_clbptLockWaitBuffer((clbpt_tree)tree);	/////
+		if(((clbpt_tree)tree)->close_thread)pthread_exit(0);
 		do {
-			int err = (int)_clbptLockWaitBuffer((clbpt_tree)tree);	/////
-			if (err != CLBPT_SUCCESS) 
-				return NULL;
-			if(((clbpt_tree)tree)->close_thread)return NULL;
+			if(((clbpt_tree)tree)->close_thread)pthread_exit(0);
 			printf("select START\n");
 			isEmpty = _clbptSelectFromWaitBuffer((clbpt_tree)tree);
 			printf("isEmpty = %d\n", isEmpty);
 			printf("select COMPLETE\n");
 			printf("handle START\n");
-			//_clbptHandleExecuteBuffer((clbpt_tree)tree);
-			isEmpty = 1;
+			_clbptHandleExecuteBuffer((clbpt_tree)tree);
+			//isEmpty = 1;
 			printf("handle COMPLETE\n");
 		} while (isEmpty != 1);
 		((clbpt_tree)tree)->is_Complete = 1;
-		pthread_mutex_unlock(&(((clbpt_tree)tree)->loop_mutex));
 	}
 }
 
@@ -97,7 +94,6 @@ int _clbptBufferExchange(clbpt_tree tree)
 	void **result_buf_temp = tree->result_buf;
 	tree->result_buf = tree->execute_result_buf;
 	tree->execute_result_buf = result_buf_temp;
-	//tree->fetch_buf_index = 0;
 	fprintf(stderr, "buffer exchange COMPLETE\n");
 	int err = _clbptUnlockWaitBuffer(tree);
 	if (err != CLBPT_SUCCESS) 
@@ -148,7 +144,6 @@ int clbptCreateTree(
 	const size_t record_size)
 {
 	int err;
-	pthread_t thread;
 	clbpt_tree dst_tree;
 	dst_tree = malloc(sizeof(struct _clbpt_tree));
 	dst_tree->platform = platform;
@@ -161,13 +156,14 @@ int clbptCreateTree(
 	dst_tree->result_buf = calloc(sizeof(void *), CLBPT_BUF_SIZE);
 	dst_tree->execute_result_buf = calloc(sizeof(void *), CLBPT_BUF_SIZE);
 	dst_tree->fetch_buf_index = 0;
+	dst_tree->close_thread = 0;
 	dst_tree->is_Complete = 0;
 	if ((err = pthread_mutex_init(&(dst_tree->buffer_mutex), NULL)) != 0)
 		return err;
 	if ((err = pthread_mutex_init(&(dst_tree->loop_mutex), NULL)) != 0)
 		return err;
 	_clbptInitialize(dst_tree);
-	pthread_create(&thread, NULL, _clbptHandler, dst_tree);
+	pthread_create(&dst_tree->handler, NULL, _clbptHandler, dst_tree);
 	*dst_tree_ptr = dst_tree;
 	return CLBPT_SUCCESS;
 }
@@ -176,9 +172,10 @@ int clbptReleaseTree(clbpt_tree tree)
 {
 	tree->close_thread = 1;
 	_clbptUnlockWaitBuffer(tree);
-	pthread_join(*tree->handler,NULL);
+	pthread_join(tree->handler,NULL);
 	if (tree == NULL) 
 		return CLBPT_SUCCESS;
+	_clbptReleaseLeaf(tree);
 	//if (tree->wait_buf != NULL) 
 	//	free(tree->wait_buf);
 	if (tree->fetch_buf != NULL) 
@@ -186,8 +183,6 @@ int clbptReleaseTree(clbpt_tree tree)
 	if (tree->result_buf != NULL) 
 		free(tree->result_buf);
 	free(tree);
-
-	_clbptReleaseLeaf(tree);
 
 	return CLBPT_SUCCESS;
 }
@@ -273,9 +268,9 @@ int clbptFlush(clbpt_tree tree)
 
 int clbptFinish(clbpt_tree tree)
 {
+	tree->is_Complete = 0;
 	int err = clbptFlush(tree);
 	if (err != CLBPT_SUCCESS) return err;
 	while(!tree->is_Complete);
-	tree->is_Complete = 0;
 	return CLBPT_SUCCESS;
 }
