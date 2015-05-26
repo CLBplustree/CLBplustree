@@ -33,7 +33,14 @@ typedef struct _clbpt_int_node {
 	uint parent_key;
 } clbpt_int_node;
 
+#if CPU_BITNESS == 32
+typedef	struct {
+	uint h;
+	uint l;
+} clbpt_packet;
+#else
 typedef	ulong clbpt_packet;
+#endif
 
 /*
 typedef struct _clbpt_wpacket {
@@ -59,6 +66,22 @@ typedef struct _clbpt_property {
 } clbpt_property;
 
 #define getKey(X) (int)(((X) << 1) & 0x80000000 | (X) & 0x7FFFFFFF)
+
+#if CPU_BITNESS == 32
+
+#define getKeyFromPacket(X) getKey((X).h)
+#define PACKET_NOP ((clbpt_packet){.h = 0x3FFFFFFF, .l = 0x00000000})
+#define isReadPacket(X) (!((uchar)((X).h >> 31) & 0x1))
+#define isWritePacket(X) ((uchar)((X).h >> 31) & 0x1)
+#define isNopPacket(X) ((X) == PACKET_NOP)
+#define isRangePacket(X) ((!((uchar)((X).h >> 31) & 0x1)) && ((uchar)((X).l >> 31) & 0x1))
+#define isSearchPacket(X) ((!((uchar)((X).h >> 31) & 0x1)) && ((X).l == 0x7FFFFFFF))
+#define isInsertPacket(X) (((uchar)((X).h >> 31) & 0x1) && ((X).l != 0))
+#define isDeletePacket(X) (((uchar)((X).h >> 31) & 0x1) && ((X).l == 0))
+#define getUpperKeyFromRangePacket(X) (int)(((X).l << 1) & 0x80000000 | (X).l & 0x7FFFFFFF)
+
+#else
+
 #define getKeyFromPacket(X) (int)(((X) >> 31) & 0x80000000 | ((X) >> 32) & 0x7FFFFFFF)
 #define PACKET_NOP (0x3FFFFFFF00000000L)
 #define isReadPacket(X) (!((uchar)((X) >> 63) & 0x1))
@@ -69,6 +92,8 @@ typedef struct _clbpt_property {
 #define isInsertPacket(X) (((uchar)((X) >> 63) & 0x1) && ((uint)(X) != 0))
 #define isDeletePacket(X) (((uchar)((X) >> 63) & 0x1) && ((uint)(X) == 0))
 #define getUpperKeyFromRangePacket(X) (int)(((X) << 1) & 0x80000000 | (X) & 0x7FFFFFFF)
+
+#endif
 
 #define getKeyFromEntry(X) (int)(((X.key) << 1) & 0x80000000 | (X.key) & 0x7FFFFFFF)
 #define getChildFromEntry(X) (X.child)
