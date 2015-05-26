@@ -20,23 +20,23 @@
 #define CLBPT_ORDER 128	// Should be less than or equal to half
 						// of MAX_LOCAL_SIZE
 
-#define CLBPT_BUF_SIZE 65536
+//#define CLBPT_BUF_SIZE 65536
+#define CLBPT_BUF_SIZE 20
 
 #define CLBPT_STATUS_DONE 0
 #define CLBPT_STATUS_WAIT 1
 
 // KERNEL
-#define NUM_KERNELS 10
+#define NUM_KERNELS 9
 #define CLBPT_PACKET_SELECT 0
 #define CLBPT_PACKET_SORT 1
 #define CLBPT_INITIALIZE 2
 #define CLBPT_SEARCH 3
-#define CLBPT_WPACKET_INIT 4
-#define CLBPT_WPACKET_BUFFER_HANDLER 5
-#define CLBPT_WPACKET_BUFFER_ROOT_HANDLER 6
-#define CLBPT_WPACKET_BUFFER_PRE_ROOT_HANDLER 7
-#define CLBPT_WPACKET_COMPACT 8
-#define CLBPT_WPACKET_SUPER_GROUP_HANDLER 9
+#define CLBPT_WPACKET_BUFFER_HANDLER 4
+#define CLBPT_WPACKET_BUFFER_ROOT_HANDLER 5
+#define CLBPT_WPACKET_INIT 6
+#define CLBPT_WPACKET_COMPACT 7
+#define CLBPT_WPACKET_SUPER_GROUP_HANDLER 8
 
 struct _clbpt_platform {
 	cl_context context;
@@ -99,11 +99,10 @@ struct _clbpt_tree {
 	pthread_t handler;
 	pthread_mutex_t buffer_mutex;
 	pthread_mutex_t loop_mutex;
-	int close_thread;
-	int is_Complete;
 
 	int buf_status;
 	int fetch_buf_index;
+	int wait_buf_index;
 	clbpt_packet *fetch_buf;
 	clbpt_packet *wait_buf;
 	clbpt_packet *execute_buf;
@@ -111,9 +110,11 @@ struct _clbpt_tree {
 	void **execute_result_buf;
 	void **node_addr_buf;
 
+	int close_thread;
+	int is_Complete;
+
 	int degree;
 	size_t record_size;
-	cl_command_queue queue;	// What for ?
 
 	clbpt_property property;
 	cl_mem heap;

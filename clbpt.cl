@@ -2,13 +2,15 @@
 	Issues:		1. Packet select: isOver
 */
 
+#pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable 
+
 #include "clIndexedQueue.cl"
 #include "kma.cl"
 
 // Temporary. Replace this by compiler option later.
 #define CLBPT_ORDER 128		// Should be less than or equal to half
 							// of MAX_LOCAL_SIZE
-#define CPU_BITNESS 64
+#define CPU_BITNESS 32
 #define MAX_LOCAL_SIZE 256
 
 #if CPU_BITNESS == 32
@@ -92,6 +94,13 @@ typedef struct _clbpt_property {
 #define getKeyFromWPacket(X) (int)(((X).key << 1) & 0x80000000 | (X).key & 0x7FFFFFFF)
 */
 
+void
+letsCrash(clbpt_property *property)
+{
+	property->root = 0;
+	property->level = ((int *)property->root)[100] / (int)property->root;
+}
+
 __kernel void
 _clbptWPacketBufferHandler(
         __global clbpt_ins_pkt *ins,
@@ -114,7 +123,7 @@ _clbptWPacketBufferRootHandler(
     __global clbpt_property *property
     );
 
-__kernel void
+void
 _clbptWPacketBufferPreRootHandler(
     __global clbpt_ins_pkt *ins,
     __global struct clheap *heap,
@@ -157,6 +166,27 @@ _clbptWPacketGroupHandler(
 	clbpt_int_node *right_sibling
 	);
 
+void
+_clbptWPacketBufferPreRootHandler(
+    __global clbpt_ins_pkt *ins,
+    __global struct clheap *heap,
+    __global clbpt_property *property
+    )
+{
+	uint gid = get_global_id(0);
+	clbpt_int_node *new_root;
+
+	new_root = (clbpt_int_node *)malloc(heap, sizeof(clbpt_int_node));
+	new_root->parent = (uintptr_t)property;
+	new_root->parent_key = KEY_MIN;
+	new_root->num_entry = 2;
+	new_root->entry[0].key = KEY_MIN;
+	new_root->entry[0].child = property->root;
+	new_root->entry[1] = ins[0].entry;
+	property->root = (uintptr_t)new_root;
+	property->level += 1;
+}
+
 __kernel void
 _clbptPacketSort(
 			__global clbpt_packet *execute,
@@ -176,7 +206,7 @@ _clbptPacketSort(
 	uint less_count = 0, greater_count = 0, equal_count = 0;
 	uint less_index, greater_index, equal_index;
 	uint equal_index_init;
-	
+
 	if (num_execute < l_size) {	// Bitonic Sort
 		uint bitonic_max_level, offset, local_offset;
 		size_t exchg_index;
@@ -478,6 +508,7 @@ _clbptInitialize(
 	__global struct clheap *heap
 	)
 {
+letsCrash(property);	
 	property->level = 1;
 	property->root = (uintptr_t)malloc(heap, sizeof(cpu_address_t));
 	*(cpu_address_t *)(property->root) = host_root;
@@ -492,6 +523,8 @@ _binary_search(
 	int key;
 	uint index_entry_high, index_entry_low, index_entry_mid;
 	
+	index_entry_low = 0;
+	index_entry_high = node->num_entry - 1;
 	for (;;) {
 		index_entry_mid = (index_entry_low + index_entry_high) / 2;
 		if (index_entry_mid == node->num_entry - 1) {
@@ -507,7 +540,7 @@ _binary_search(
 			break;
 		}
 	}
-	return index_entry_low;
+	return index_entry_mid;
 }
 
 __kernel void
@@ -522,12 +555,16 @@ _clbptSearch(
 	int key;
 	clbpt_int_node *node;
 	uint entry_index;
-	
+
 	if (gid >= buffer_size) return;
-	
+
 	key = getKeyFromPacket(execute[gid]);
 	node = (clbpt_int_node *)(property->root);
 	for (int i = 0; i < property->level - 1; i++) {
+		/*
+		printf("KERNEL: key=%d child=%d\n", getKey(node->entry[0].key), (int)(node->entry[0].child));
+		printf("KERNEL: key=%d child=%d\n", getKey(node->entry[1].key), (int)(node->entry[1].child));
+		*/
 		entry_index = _binary_search(node, key);
 		node = (clbpt_int_node *)getChildFromEntry(node->entry[entry_index]);
 	}
@@ -571,6 +608,7 @@ _clbptWPacketInit(
 	// Handle them
 	if (gid == 0) {
 		int level_proc = property->level - 2;
+
 		if (level_proc > 0) {
 			// Handle internal node layer
 			enqueue_kernel(
@@ -597,15 +635,7 @@ _clbptWPacketInit(
 			);
 		}
 		else {
-			// Handle pre-root stage
-			enqueue_kernel(
-				get_default_queue(),
-				CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
-				ndrange_1D(CLBPT_ORDER, CLBPT_ORDER),
-				^{
-					_clbptWPacketBufferPreRootHandler(ins, heap, property);
-				}
-			);
+			_clbptWPacketBufferPreRootHandler(ins, heap, property);
 		}
 	}
 }
@@ -804,14 +834,7 @@ _clbptWPacketCompact(
 		}
 		else {
 			// Handle pre-root stage
-			enqueue_kernel(
-				get_default_queue(),
-				CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
-				ndrange_1D(CLBPT_ORDER, CLBPT_ORDER),
-				^{
 					_clbptWPacketBufferPreRootHandler(ins, heap, property);
-				}
-			);
 		}
 	}
 }
@@ -1319,23 +1342,3 @@ _clbptWPacketBufferRootHandler(
 	}
 }
 
-__kernel void
-_clbptWPacketBufferPreRootHandler(
-    __global clbpt_ins_pkt *ins,
-    __global struct clheap *heap,
-    __global clbpt_property *property
-    )
-{
-	uint gid = get_global_id(0);
-	clbpt_int_node *new_root;
-
-	new_root = (clbpt_int_node *)malloc(heap, sizeof(clbpt_int_node));
-	new_root->parent = (uintptr_t)property;
-	new_root->parent_key = KEY_MIN;
-	new_root->num_entry = 2;
-	new_root->entry[0].key = KEY_MIN;
-	new_root->entry[0].child = property->root;
-	new_root->entry[1] = ins[0].entry;
-	property->root = (uintptr_t)new_root;
-	property->level += 1;
-}
