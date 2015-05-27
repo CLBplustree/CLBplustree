@@ -57,8 +57,8 @@ int main()
 	clbptCreateTree(&t, p, 256, 64);
 	fprintf(stderr, "CreateTree SUCCESS\n");
 
-	int a[5] = {2,5,1,4,4};
-	err = clbptEnqueueInsertions(t, 5, a, NULL);
+	int a[16] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+	err = clbptEnqueueInsertions(t, 16, a, NULL);
 	if (err != CL_SUCCESS)
 	{
 		fprintf(stderr, "EnqueInsertions ERROR\n");

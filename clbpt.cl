@@ -8,7 +8,7 @@
 #include "kma.cl"
 
 // Temporary. Replace this by compiler option later.
-#define CLBPT_ORDER 128		// Should be less than or equal to half
+#define CLBPT_ORDER 4		// Should be less than or equal to half
 							// of MAX_LOCAL_SIZE
 #define CPU_BITNESS 32
 #define MAX_LOCAL_SIZE 256
@@ -197,9 +197,9 @@ _clbptPacketSort(
 			)
 {
 	
-	const size_t gid = get_global_id(0);
-	const size_t lid = get_local_id(0);
-	const size_t l_size = get_local_size(0);
+	const int gid = get_global_id(0);
+	const int lid = get_local_id(0);
+	const int l_size = get_local_size(0);
 	//__local clbpt_packet execute_local[MAX_LOCAL_SIZE];
 	//__local cpu_address_t result_addr_local[MAX_LOCAL_SIZE];
 	event_t copy_event[2];
@@ -258,7 +258,6 @@ _clbptPacketSort(
 		copy_event[1] = async_work_group_copy(result_addr, result_addr_local, num_execute, 0);
 		wait_group_events(2, copy_event);
 		*/
-		
 	}
 	else {							// Quick Sort Partition
 	
@@ -359,9 +358,9 @@ _clbptPacketSelect(
 	__const uint buffer_size
 	)
 {
-	const uint gid = get_global_id(0);
-	const uint grid = get_group_id(0);
-	const uint lsize = get_local_size(0);
+	const int gid = get_global_id(0);
+	const int grid = get_group_id(0);
+	const int lsize = get_local_size(0);
 	
 	if (gid >= buffer_size) return;
 	
@@ -371,7 +370,7 @@ _clbptPacketSelect(
 		execute[gid] = PACKET_NOP;
 		return;
 	}
-	
+
 	uchar isRange = isRangePacket(pkt);
 	int key = getKeyFromPacket(pkt);
 	int ukey = getUpperKeyFromRangePacket(pkt);
@@ -394,7 +393,6 @@ _clbptPacketSelect(
 			}
 		}
 	}
-	work_group_barrier(0);
 	if (i == grid * lsize - 1) {
 		for (; i >= 0; i--) {
 			if (isWritePacket(prev_pkt = wait[i])) {
@@ -623,6 +621,7 @@ _clbptWPacketInit(
 		} 
 		else if (level_proc == 0) {
 			// Handle root node layer
+			printf("OCL: ins[0].target=%u\n", (uint)ins[0].target);
 			enqueue_kernel(
 				get_default_queue(),
 				CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
@@ -1208,12 +1207,13 @@ _clbptWPacketBufferRootHandler(
     __global clbpt_property *property
     )
 {
-	uint gid = get_global_id(0);
+	int gid = get_global_id(0);
 	clbpt_int_node *target;
-
+	
 	// Clear proc_list
 	proc_list[gid] = ENTRY_NULL;
 	proc_list[CLBPT_ORDER + gid] = ENTRY_NULL;
+
 	// Copy the target node into proc_list
 	if (num_ins != 0) {
 		target = (clbpt_int_node *)(ins[0].target);
@@ -1221,6 +1221,8 @@ _clbptWPacketBufferRootHandler(
 	else {
 		target = (clbpt_int_node *)(del[0].target);
 	}
+	printf("OCL: %u\n", (uint)target);
+
 	if (gid < target->num_entry) {
 		proc_list[gid] = target->entry[gid];
 	}
