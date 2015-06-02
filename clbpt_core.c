@@ -23,6 +23,7 @@ static uint32_t num_ins;
 static clbpt_del_pkt *del;
 static uint32_t num_del;
 static void **addr;
+static void **leafmirror_addr;
 
 // Size and Order
 static size_t global_work_size;
@@ -137,7 +138,7 @@ int _clbptCreateKernels(clbpt_platform platform)
 	for(i = 0; i < NUM_KERNELS; i++)
 	{
 		kernels[i] = clCreateKernel(platform->program, kernels_name[i], &err);
-		if(err != CL_SUCCESS)
+		if (err != CL_SUCCESS)
 		{
 			fprintf(stderr, "kernel error %d\n", err);
 			return err;
@@ -180,6 +181,7 @@ int _clbptInitialize(clbpt_tree tree)
 	// create ins, del pkt buffer
 	ins = (clbpt_ins_pkt *)malloc(sizeof(clbpt_ins_pkt) * buf_size/2);
 	addr = (void **)malloc(sizeof(void *) * buf_size/2);
+	leafmirror_addr = (void **)malloc(sizeof(void *) * buf_size/2);
 	num_ins = 0;
 	del = (clbpt_del_pkt *)malloc(sizeof(clbpt_del_pkt) * buf_size/2);
 	num_del = 0;
@@ -214,9 +216,11 @@ int _clbptInitialize(clbpt_tree tree)
 	// Initialize
 	global_work_size = local_work_size = 1;
 	err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
-	assert(err == 0);	
-	//tree->property = (clbpt_property)clEnqueueMapBuffer(queue, property_d, CL_TRUE, CL_MAP_READ, 0, sizeof(clbpt_property), 0, NULL, NULL, &err);
-	//assert(err == 0);
+	assert(err == 0);
+	tree->property = (clbpt_property)clEnqueueMapBuffer(queue, property_d, CL_TRUE, CL_MAP_READ, 0, sizeof(clbpt_property), 0, NULL, NULL, &err);
+	assert(err == 0);
+
+	tree->leaf->parent = tree->property->root;
 
 	// DEBUG used
 	//fprintf(stderr, "Initialize SUCCESS\n");
@@ -441,7 +445,6 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 		{
 			node_result = handle_node(node_addr);
 
-			// DEBUG
 			if (node_result > 0)	// insertion pkts rollback to waiting buffer
 			{
 				// DEBUG
@@ -451,9 +454,13 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 				for (; node_result > 0; node_result--)
 				{
 					while (!isInsertPacket(tree->execute_buf[k]))
+					{
 						k--;
-					while(tree->wait_buf[j] != PACKET_NOP) 
+					}
+					while(tree->wait_buf[j] != PACKET_NOP)
+					{
 						j++;
+					}
 					tree->wait_buf[j] = tree->execute_buf[k];
 					fprintf(stderr, "before delete\n");
 					show_leaf(tree->leaf);
@@ -478,10 +485,14 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 				k = i-1;
 				for (; node_result > 0; node_result--)
 				{
-					while (!isInsertPacket(tree->execute_buf[k]))
+					while(!isInsertPacket(tree->execute_buf[k]))
+					{
 						k--;
-					while(tree->wait_buf[j] != PACKET_NOP) 
+					}
+					while(tree->wait_buf[j] != PACKET_NOP)
+					{
 						j++;
+					}
 					tree->wait_buf[j] = tree->execute_buf[k];
 					fprintf(stderr, "before delete\n");
 					show_leaf(tree->leaf);
@@ -534,9 +545,10 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	err = clEnqueueUnmapMemObject(queue, result_buf_d, tree->node_addr_buf, 0, NULL, NULL);
 
 	// clmem initialize
-	static cl_mem ins_d;
+	static cl_mem ins_d;	// static ???
 	static cl_mem del_d;
 	static cl_mem addr_d;
+	static cl_mem leafmirror_addr_d;
 
 	// clmem allocation
 	if (num_ins != 0)
@@ -544,6 +556,8 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 		ins_d = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, num_ins * sizeof(clbpt_ins_pkt), ins, &err);
 		assert(err == 0);
 		addr_d = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, num_ins * sizeof(void *), (void *)addr, &err);
+		assert(err == 0);
+		leafmirror_addr_d = clCreateBuffer(context, 0, num_ins * sizeof(void *), NULL, &err);
 		assert(err == 0);
 	}
 	if (num_del != 0)
@@ -558,22 +572,36 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	assert(err == 0);
 	err = clSetKernelArg(kernel, 1, sizeof(addr_d), (void *)&addr_d);
 	assert(err == 0);
-	err = clSetKernelArg(kernel, 2, sizeof(num_ins), (void *)&num_ins);
+	err = clSetKernelArg(kernel, 2, sizeof(leafmirror_addr_d), (void *)&leafmirror_addr_d);
 	assert(err == 0);
-	err = clSetKernelArg(kernel, 3, sizeof(del_d), (void *)&del_d);
+	err = clSetKernelArg(kernel, 3, sizeof(num_ins), (void *)&num_ins);
 	assert(err == 0);
-	err = clSetKernelArg(kernel, 4, sizeof(num_del), (void *)&num_del);
+	err = clSetKernelArg(kernel, 4, sizeof(del_d), (void *)&del_d);
 	assert(err == 0);
-	err = clSetKernelArg(kernel, 5, sizeof(tree->heap), (void *)&(tree->heap));
+	err = clSetKernelArg(kernel, 5, sizeof(num_del), (void *)&num_del);
 	assert(err == 0);
-	err = clSetKernelArg(kernel, 6, sizeof(property_d), (void *)&property_d);
+	err = clSetKernelArg(kernel, 6, sizeof(tree->heap), (void *)&(tree->heap));
+	assert(err == 0);
+	err = clSetKernelArg(kernel, 7, sizeof(property_d), (void *)&property_d);
 	assert(err == 0);
 
 	// WPacketInit
 	global_work_size = num_ins > num_del ? num_ins : num_del;
 	local_work_size = max_local_work_size;
 	err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
-	assert(err == 0);	
+	assert(err == 0);
+
+	// assign leafmirror_addr to node_sibling's parent
+	if (num_ins != 0)
+	{
+		leafmirror_addr = (void **)clEnqueueMapBuffer(queue, leafmirror_addr_d, CL_TRUE, CL_MAP_READ, 0, num_ins * sizeof(void *), 0, NULL, NULL, &err);
+		assert(err == 0);
+
+		for(i = 0; i < num_ins; i++)
+		{
+			((clbpt_int_node *)addr[i])->parent = leafmirror_addr[i];
+		}
+	}
 
 	return CL_SUCCESS;
 }
@@ -608,6 +636,7 @@ int _clbptReleaseLeaf(clbpt_tree tree)
 	free(ins);
 	free(del);
 	free(addr);
+	free(leafmirror_addr);
 	free(tree->node_addr_buf);
 
 	return CL_SUCCESS;
@@ -648,7 +677,7 @@ int handle_node(void *node_addr)
 		clbpt_entry entry_d;
 		entry_d.key = node_sibling->parent_key;
 		entry_d.child = NULL;
-		ins[num_ins].target = node->parent;
+		ins[num_ins].target = node->parent;	// internal node
 		ins[num_ins].entry = entry_d;
 		addr[num_ins] = (void *)node_sibling;
 		fprintf(stderr, "insert to internal with head = %d\n", *((int32_t *)node_sibling->head->record_ptr));
@@ -785,7 +814,7 @@ int haldle_leftmost_node(clbpt_leaf_node *node)
 				clbpt_entry entry_d;
 				entry_d.key = node_sibling->parent_key;
 				entry_d.child = NULL;
-				ins[num_ins].target = node_sibling->parent;
+				ins[num_ins].target = node_sibling->parent;	// internal node
 				ins[num_ins].entry = entry_d;
 				addr[num_ins] = (void *)node_sibling;
 				num_ins++;
