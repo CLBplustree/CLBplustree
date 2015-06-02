@@ -1,9 +1,3 @@
-/*
-	Issues:		1. Packet select: isOver
-*/
-
-#pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable 
-
 #include "clIndexedQueue.cl"
 #include "kma.cl"
 
@@ -25,7 +19,7 @@ typedef struct _clbpt_entry {
 	clbpt_key key;
 	uintptr_t child;
 } clbpt_entry;
- 
+
 typedef struct _clbpt_int_node {
 	clbpt_entry entry[CLBPT_ORDER];
 	uint num_entry;
@@ -57,6 +51,11 @@ typedef struct _clbpt_property {
 	uintptr_t root;
 	int level;
 } clbpt_property;
+
+typedef struct _clbpt_leafmirror {
+	uintptr_t parent;
+	cpu_address_t leaf;
+} clbpt_leafmirror;
 
 #define getKey(X) (int)(((X) << 1) & 0x80000000 | (X) & 0x7FFFFFFF)
 #define getKeyFromPacket(X) (int)(((X) >> 31) & 0x80000000 | ((X) >> 32) & 0x7FFFFFFF)
@@ -93,13 +92,6 @@ typedef struct _clbpt_property {
 #define isNopWPacket(X) ((X).target == 0)
 #define getKeyFromWPacket(X) (int)(((X).key << 1) & 0x80000000 | (X).key & 0x7FFFFFFF)
 */
-
-void
-letsCrash(clbpt_property *property)
-{
-	property->root = 0;
-	property->level = ((int *)property->root)[100] / (int)property->root;
-}
 
 __kernel void
 _clbptWPacketBufferHandler(
@@ -177,12 +169,16 @@ _clbptWPacketBufferPreRootHandler(
 	clbpt_int_node *new_root;
 
 	new_root = (clbpt_int_node *)malloc(heap, sizeof(clbpt_int_node));
-	new_root->parent = (uintptr_t)property;
+	new_root->parent = 0;
 	new_root->parent_key = KEY_MIN;
 	new_root->num_entry = 2;
 	new_root->entry[0].key = KEY_MIN;
 	new_root->entry[0].child = property->root;
+	((clbpt_leafmirror *)(new_root->entry[0].child))->parent =
+		(uintput_t)new_root;
 	new_root->entry[1] = ins[0].entry;
+	((clbpt_leafmirror *)(new_root->entry[1].child))->parent =
+		(uintput_t)new_root;
 	property->root = (uintptr_t)new_root;
 	property->level += 1;
 }
@@ -196,7 +192,7 @@ _clbptPacketSort(
 			uint num_execute
 			)
 {
-	
+
 	const int gid = get_global_id(0);
 	const int lid = get_local_id(0);
 	const int l_size = get_local_size(0);
@@ -212,21 +208,21 @@ _clbptPacketSort(
 		size_t exchg_index;
 		clbpt_packet temp1, temp2;
 		cpu_address_t temp_addr;
-		
+
 		/*
 		// Copy to local
 		copy_event[0] = async_work_group_copy(execute_local, execute, num_execute, 0);
 		copy_event[1] = async_work_group_copy(result_addr_local, result_addr, num_execute, 0);
 		wait_group_events(2, copy_event);
 		*/
-		
+
 		// Sort
 		for (bitonic_max_level = 1; bitonic_max_level < num_execute; bitonic_max_level <<= 1) {
 			if ((local_offset = gid & ((bitonic_max_level << 1) - 1)) < bitonic_max_level) {
-			
-				if (getKeyFromPacket(temp1 = execute[gid]) > 
+
+				if (getKeyFromPacket(temp1 = execute[gid]) >
 					getKeyFromPacket(temp2 = execute[exchg_index = gid + ((bitonic_max_level - local_offset) << 1) - 1]) &&
-					exchg_index < num_execute) 
+					exchg_index < num_execute)
 				{
 					execute[gid] = temp2;
 					execute[exchg_index] = temp1;
@@ -251,7 +247,7 @@ _clbptPacketSort(
 				work_group_barrier(CLK_LOCAL_MEM_FENCE);
 			}
 		}
-		
+
 		/*
 		// Copy to global
 		copy_event[0] = async_work_group_copy(execute, execute_local, num_execute, 0);
@@ -260,13 +256,13 @@ _clbptPacketSort(
 		*/
 	}
 	else {							// Quick Sort Partition
-	
+
 		const int pivot = getKeyFromPacket(execute[num_execute >> 1]);
-		
+
 		for (int i = (num_execute * lid) / l_size; i != (num_execute * (lid + 1)) / l_size; i++) {
 			if (getKeyFromPacket(execute[i]) < pivot) {
 				less_count++;
-			} 
+			}
 			if (getKeyFromPacket(execute[i]) > pivot) {
 				greater_count++;
 			}
@@ -274,7 +270,7 @@ _clbptPacketSort(
 				equal_count++;
 			}
 		}
-		
+
 		less_index = work_group_scan_exclusive_add(less_count);
 		equal_index = work_group_scan_exclusive_add(equal_count);
 		greater_index = work_group_scan_inclusive_add(greater_count);
@@ -287,12 +283,12 @@ _clbptPacketSort(
 		work_group_barrier(CLK_LOCAL_MEM_FENCE);
 		equal_index += equal_index_init;
 		work_group_barrier(CLK_LOCAL_MEM_FENCE);
-		
+
 		for (int i = (num_execute * lid) / l_size; i != (num_execute * (lid + 1)) / l_size; i++) {
 			if (getKeyFromPacket(execute[i]) < pivot) {
 				execute_temp[less_index] = execute[i];
 				result_addr_temp[less_index++] = result_addr[i];
-			} 
+			}
 			if (getKeyFromPacket(execute[i]) > pivot) {
 				execute_temp[greater_index] = execute[i];
 				result_addr_temp[greater_index++] = result_addr[i];
@@ -303,7 +299,7 @@ _clbptPacketSort(
 			}
 		}
 		work_group_barrier(CLK_LOCAL_MEM_FENCE);
-		
+
 		/*
 		for (int i = 0; i <= num_execute - MAX_LOCAL_SIZE; i += MAX_LOCAL_SIZE) {
 			copy_event[0] = async_work_group_copy(execute_local, execute_temp, MAX_LOCAL_SIZE, 0);
@@ -320,7 +316,7 @@ _clbptPacketSort(
 		copy_event[1] = async_work_group_copy(result_addr, result_addr_local, num_execute % MAX_LOCAL_SIZE, 0);
 		wait_group_events(2, copy_event);
 		*/
-		
+
 		for (int i = (num_execute * lid) / l_size; i != (num_execute * (lid + 1)) / l_size; i++) {
 			execute[i] = execute_temp[i];
 			result_addr[i] = result_addr_temp[i];
@@ -361,11 +357,11 @@ _clbptPacketSelect(
 	const int gid = get_global_id(0);
 	const int grid = get_group_id(0);
 	const int lsize = get_local_size(0);
-	
+
 	if (gid >= buffer_size) return;
-	
+
 	clbpt_packet pkt = wait[gid];
-	
+
 	if (isNopPacket(pkt)) {
 		execute[gid] = PACKET_NOP;
 		return;
@@ -376,7 +372,7 @@ _clbptPacketSelect(
 	int ukey = getUpperKeyFromRangePacket(pkt);
 	clbpt_packet prev_pkt;
 	int i;
-	
+
 	*isOver = 0;
 	for (i = gid - 1; i >= grid * lsize; i--) {
 		if (isWritePacket(prev_pkt = wait[i])) {
@@ -435,7 +431,7 @@ _clbptPacketSelect(
 	int pkt_key;
 	uint i, j;
 	int isOver_private = 1;
-	
+
 	for (i = 0; i < buffer_size; i += lsize) {
 		if (i + lid < buffer_size) {
 			select[i + lid] = 1;
@@ -506,10 +502,10 @@ _clbptInitialize(
 	__global struct clheap *heap
 	)
 {
-letsCrash(property);	
 	property->level = 1;
-	property->root = (uintptr_t)malloc(heap, sizeof(cpu_address_t));
-	*(cpu_address_t *)(property->root) = host_root;
+	property->root = (uintptr_t)malloc(heap, sizeof(clbpt_leafmirror));
+	((clbpt_leafmirror *)(property->root))->leaf = host_root;
+	((clbpt_leafmirror *)(property->root))->parent = 0;
 }
 
 uint
@@ -520,7 +516,7 @@ _binary_search(
 {
 	int key;
 	uint index_entry_high, index_entry_low, index_entry_mid;
-	
+
 	index_entry_low = 0;
 	index_entry_high = node->num_entry - 1;
 	for (;;) {
@@ -566,17 +562,18 @@ _clbptSearch(
 		entry_index = _binary_search(node, key);
 		node = (clbpt_int_node *)getChildFromEntry(node->entry[entry_index]);
 	}
-	result[gid] = *((cpu_address_t *)node);
+	result[gid] = ((clbpt_leafmirror *)node)->leaf;
 }
-	
+
 /**
  *	This is the only kernel function for host to call.
  *	The global size must equal to or greater than num_ins and num_del.
  */
 __kernel void
-_clbptWPacketInit(		
+_clbptWPacketInit(
 	__global clbpt_ins_pkt *ins,
 	__global cpu_address_t *addr,
+	__global uintptr_t *leafmirror_addr,
 	uint num_ins,
 	__global clbpt_del_pkt *del,
 	uint num_del,
@@ -588,10 +585,11 @@ _clbptWPacketInit(
 
 	// Initialize Insert Packet
 	if (gid < num_ins) {
-		cpu_address_t *new_alloc;
+		clbpt_leafmirror *new_alloc;
 
-		new_alloc = (cpu_address_t *)malloc(heap, sizeof(cpu_address_t));
-		*new_alloc = addr[gid];
+		new_alloc = (clbpt_leafmirror *)malloc(heap, sizeof(clbpt_leafmirror));
+		new_alloc->leaf = addr[gid];
+		new_alloc->parent = ((clbpt_leafmirror *)(ins[gid].target))->parent;
 		ins[gid].entry.child = (uintptr_t)new_alloc;
 	}
 	// Initialize Delete Packet
@@ -614,11 +612,11 @@ _clbptWPacketInit(
 				CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
 				ndrange_1D(CLBPT_ORDER, CLBPT_ORDER),
 				^{
-					 _clbptWPacketBufferHandler(ins, num_ins, del, num_del, 
+					 _clbptWPacketBufferHandler(ins, num_ins, del, num_del,
 						heap, property, level_proc);
 				 }
 			);
-		} 
+		}
 		else if (level_proc == 0) {
 			// Handle root node layer
 			printf("OCL: ins[0].target=%u\n", (uint)ins[0].target);
@@ -627,7 +625,7 @@ _clbptWPacketInit(
 				CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
 				ndrange_1D(CLBPT_ORDER, CLBPT_ORDER),
 				^(__local void *proc_list){
-					_clbptWPacketBufferRootHandler(proc_list, ins, num_ins, del, 
+					_clbptWPacketBufferRootHandler(proc_list, ins, num_ins, del,
 						num_del, heap, property);
 				},
 				2 * CLBPT_ORDER * sizeof(clbpt_entry)
@@ -764,7 +762,7 @@ _clbptWPacketCompact(
 
 	// Compact Insert Packet List
 	id_base = 0;
-	for (uint old_ins_i_base = 0; old_ins_i_base < num_ins; 
+	for (uint old_ins_i_base = 0; old_ins_i_base < num_ins;
 		old_ins_i_base += grsize)
 	{
 		uint old_ins_i = old_ins_i_base + gid;
@@ -785,8 +783,8 @@ _clbptWPacketCompact(
 	num_ins = id_base;
 	// Compace Delete Packet List
 	id_base = 0;
-	for (uint old_del_i_base = 0; old_del_i_base < num_del; 
-		old_del_i_base += grsize) 
+	for (uint old_del_i_base = 0; old_del_i_base < num_del;
+		old_del_i_base += grsize)
 	{
 		uint old_del_i = old_del_i_base + gid;
 		if (old_del_i < num_del) {
@@ -813,11 +811,11 @@ _clbptWPacketCompact(
 				CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
 				ndrange_1D(CLBPT_ORDER, CLBPT_ORDER),
 				^{
-					_clbptWPacketBufferHandler(ins,	num_ins, del, num_del, 
+					_clbptWPacketBufferHandler(ins,	num_ins, del, num_del,
 						heap, property, level_proc);
 				 }
 			);
-		} 
+		}
 		else if (level_proc == 0) {
 			// Handle root node layer
 			enqueue_kernel(
@@ -825,7 +823,7 @@ _clbptWPacketCompact(
 				CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
 				ndrange_1D(CLBPT_ORDER, CLBPT_ORDER),
 				^(__local void *proc_list){
-					_clbptWPacketBufferRootHandler(proc_list, ins, num_ins, del, 
+					_clbptWPacketBufferRootHandler(proc_list, ins, num_ins, del,
 						num_del, heap, property);
 				},
 				2 * CLBPT_ORDER * sizeof(clbpt_entry)
@@ -869,7 +867,7 @@ _clbptWPacketSuperGroupHandler(
 		parent = (clbpt_int_node *)
 			(((clbpt_int_node *)(del[0].target))->parent);
 	}
-	for (target_branch_index = 0; target_branch_index < parent->num_entry; 
+	for (target_branch_index = 0; target_branch_index < parent->num_entry;
 		target_branch_index++)
 	{
 		// Define cur_target
@@ -901,7 +899,7 @@ _clbptWPacketSuperGroupHandler(
 		}
 		work_group_barrier(0);
 		num_del_group = work_group_reduce_add(is_in_group);
-		_clbptWPacketGroupHandler(proc_list, ins + ins_begin, num_ins, 
+		_clbptWPacketGroupHandler(proc_list, ins + ins_begin, num_ins,
 			del + del_begin, num_del, heap, parent, target_branch_index,
 			(clbpt_int_node *)cur_target, sibling, right_sibling);
 		ins_begin += num_ins_group;
@@ -953,17 +951,17 @@ _clbptWPacketGroupHandler(
 		uint bitonic_max_level, offset, local_offset;
 		size_t exchg_index;
 		clbpt_entry temp1, temp2;
-		
-		for (bitonic_max_level = 1; bitonic_max_level < 2 * CLBPT_ORDER; 
+
+		for (bitonic_max_level = 1; bitonic_max_level < 2 * CLBPT_ORDER;
 			bitonic_max_level <<= 1)
 		{
 			if ((local_offset = gid & ((bitonic_max_level << 1) - 1))
 				< bitonic_max_level)
 			{
-				if ((getKey((temp1 = proc_list[gid]).key) > 
-					getKey((temp2 = proc_list[exchg_index = gid + 
+				if ((getKey((temp1 = proc_list[gid]).key) >
+					getKey((temp2 = proc_list[exchg_index = gid +
 						((bitonic_max_level - local_offset) << 1) - 1]).key) ||
-					temp1.child == NULL) && exchg_index < CLBPT_ORDER * 2) 
+					temp1.child == NULL) && exchg_index < CLBPT_ORDER * 2)
 				{
 					proc_list[gid] = temp2;
 					proc_list[exchg_index] = temp1;
@@ -972,8 +970,8 @@ _clbptWPacketGroupHandler(
 			work_group_barrier(CLK_LOCAL_MEM_FENCE);
 			for (offset = (bitonic_max_level >> 1); offset != 0; offset >>= 1) {
 				if ((gid & ((offset << 1) - 1)) < offset) {
-					if ((getKey((temp1 = proc_list[gid]).key) > 
-						getKey((temp2 = 
+					if ((getKey((temp1 = proc_list[gid]).key) >
+						getKey((temp2 =
 							proc_list[exchg_index = gid + offset]).key) ||
 						temp1.child == NULL) && exchg_index < CLBPT_ORDER * 2)
 					{
@@ -1003,12 +1001,17 @@ _clbptWPacketGroupHandler(
 		del[gid].target = 0;
 	}
 
-	// Handle "proc". 
+	// Handle "proc".
+	/** !!!!!!!!!! NEED MODIFICATION !!!!!!!!!!!!!
+	 *  Parent of child needs modifing
+	 */
+	/*
 	if (target_branch_index != 0 &&
 		proc_num_entry < half_c(CLBPT_ORDER))
 	{
 		// Need Borrow or Merge
-		if (sibling->num_entry + proc_num_entry < 
+
+		if (sibling->num_entry + proc_num_entry <
 			2 * half_c(CLBPT_ORDER))
 		{
 			// Merge
@@ -1044,22 +1047,22 @@ _clbptWPacketGroupHandler(
 				target->entry[0].child = proc_list[gid].child;
 			}
 			else if (gid < proc_num_entry) {
-				target->entry[gid - half_f(sibling->num_entry + 
-					proc_num_entry - 1) + sibling->num_entry - 1] = 
+				target->entry[gid - half_f(sibling->num_entry +
+					proc_num_entry - 1) + sibling->num_entry - 1] =
 					proc_list[gid];
 			}
 			if (gid == 0) {
-				sibling->num_entry = half_f(sibling->num_entry + 
+				sibling->num_entry = half_f(sibling->num_entry +
 					proc_num_entry - 1) + 1;
 				del[0].target = parent;
 				del[0].key = target->parent_key;
 				ins[0].target = parent;
-				ins[0].entry.key = proc_list[half_f(sibling->num_entry + 
+				ins[0].entry.key = proc_list[half_f(sibling->num_entry +
 					proc_num_entry - 1) - sibling->num_entry + 1].key;
 				ins[0].entry.child = (uintptr_t)target;
-				target->parent_key = proc_list[half_f(sibling->num_entry + 
+				target->parent_key = proc_list[half_f(sibling->num_entry +
 					proc_num_entry - 1) - sibling->num_entry + 1].key;
-				target->num_entry = proc_num_entry - half_f(sibling->num_entry + 
+				target->num_entry = proc_num_entry - half_f(sibling->num_entry +
 					proc_num_entry - 1) + sibling->num_entry - 1;
 			}
 			if (sibling == (clbpt_int_node *)(parent->entry[0].child))
@@ -1089,12 +1092,12 @@ _clbptWPacketGroupHandler(
 			new_node->parent_key = proc_list[gid].key;
 		}
 		else if (gid < proc_num_entry) {
-			target->entry[gid - half_f(proc_num_entry - 1) - 1] = 
+			target->entry[gid - half_f(proc_num_entry - 1) - 1] =
 				proc_list[gid];
 		}
 		if (gid == 0) {
 			target->num_entry = half_f(proc_num_entry - 1) + 1;
-			new_node->num_entry = proc_num_entry - 
+			new_node->num_entry = proc_num_entry -
 				half_f(proc_num_entry - 1) - 1;
 		}
 		if (sibling == (clbpt_int_node *)(parent->entry[0].child))
@@ -1110,6 +1113,7 @@ _clbptWPacketGroupHandler(
 		}
 		sibling = target;
 	}
+	*/
 }
 
 /*
@@ -1126,18 +1130,18 @@ _clbptWPacketLeftmostChildHandler(
 	if (right_sibling == 0)
 		return;
 	if (target->num_entry < half_c(CLBPT_ORDER)) {
-		if (target->num_entry + right_sibling->num_entry < 
+		if (target->num_entry + right_sibling->num_entry <
 			2 * half_c(CLBPT_ORDER))
 		{
 			// Merge
 			if (gid == 0) {
-				target->entry[target->num_entry].key = 
+				target->entry[target->num_entry].key =
 					right_sibling->parent_key;
 				target->entry[target->num_entry].child =
 					right_sibling->entry[0].child;
 			}
 			else if (gid < right_sibling->num_entry) {
-				target->entry[target->num_entry + gid] = 
+				target->entry[target->num_entry + gid] =
 					right_sibling->entry[gid];
 			}
 			if (gid == 0) {
@@ -1150,40 +1154,40 @@ _clbptWPacketLeftmostChildHandler(
 		else {
 			// Borrow
 			if (gid == 0) {
-				target->entry[target->num_entry].key = 
+				target->entry[target->num_entry].key =
 					right_sibling->parent_key;
-				target->entry[target->num_entry].child = 
+				target->entry[target->num_entry].child =
 					right_sibling->entry[0].child;
 			}
-			else if (gid < half_f(target->num_entry + 
+			else if (gid < half_f(target->num_entry +
 				right_sibling->num_entry - 1) - target->num_entry + 1)
 			{
-				target->entry[target->num_entry + gid] = 
+				target->entry[target->num_entry + gid] =
 					right_sibling->entry[gid];
 			}
-			else if (gid == half_f(target->num_entry + 
+			else if (gid == half_f(target->num_entry +
 				right_sibling->num_entry - 1) - target->num_entry + 1)
 			{
 				right_sibling->entry[0].key = KEY_MIN;
 				right_sibling->entry[0].child = right_sibling->entry[gid].child;
 			}
 			else if (gid < proc_num_entry) {
-				target->entry[gid - half_f(sibling->num_entry + 
-					proc_num_entry - 1) + sibling->num_entry - 1] = 
+				target->entry[gid - half_f(sibling->num_entry +
+					proc_num_entry - 1) + sibling->num_entry - 1] =
 					proc_list[gid];
 			}
 			if (gid == 0) {
-				sibling->num_entry = half_f(sibling->num_entry + 
+				sibling->num_entry = half_f(sibling->num_entry +
 					proc_num_entry - 1) + 1;
 				del[0].target = parent;
 				del[0].key = target->parent_key;
 				ins[0].target = parent;
-				ins[0].entry.key = proc_list[half_f(sibling->num_entry + 
+				ins[0].entry.key = proc_list[half_f(sibling->num_entry +
 					proc_num_entry - 1) - sibling->num_entry + 1].key;
 				ins[0].entry.child = (uintptr_t)target;
-				target->parent_key = proc_list[half_f(sibling->num_entry + 
+				target->parent_key = proc_list[half_f(sibling->num_entry +
 					proc_num_entry - 1) - sibling->num_entry + 1].key;
-				target->num_entry = proc_num_entry - half_f(sibling->num_entry + 
+				target->num_entry = proc_num_entry - half_f(sibling->num_entry +
 					proc_num_entry - 1) + sibling->num_entry - 1;
 			}
 			if (sibling == (clbpt_int_node *)(parent->entry[0].child))
@@ -1209,7 +1213,7 @@ _clbptWPacketBufferRootHandler(
 {
 	int gid = get_global_id(0);
 	clbpt_int_node *target;
-	
+
 	// Clear proc_list
 	proc_list[gid] = ENTRY_NULL;
 	proc_list[CLBPT_ORDER + gid] = ENTRY_NULL;
@@ -1246,17 +1250,17 @@ _clbptWPacketBufferRootHandler(
 		uint bitonic_max_level, offset, local_offset;
 		size_t exchg_index;
 		clbpt_entry temp1, temp2;
-		
-		for (bitonic_max_level = 1; bitonic_max_level < 2 * CLBPT_ORDER; 
+
+		for (bitonic_max_level = 1; bitonic_max_level < 2 * CLBPT_ORDER;
 			bitonic_max_level <<= 1)
 		{
 			if ((local_offset = gid & ((bitonic_max_level << 1) - 1))
 				< bitonic_max_level)
 			{
-				if ((getKey((temp1 = proc_list[gid]).key) > 
-					getKey((temp2 = proc_list[exchg_index = gid + 
+				if ((getKey((temp1 = proc_list[gid]).key) >
+					getKey((temp2 = proc_list[exchg_index = gid +
 						((bitonic_max_level - local_offset) << 1) - 1]).key) ||
-					temp1.child == NULL) && exchg_index < CLBPT_ORDER * 2) 
+					temp1.child == NULL) && exchg_index < CLBPT_ORDER * 2)
 				{
 					proc_list[gid] = temp2;
 					proc_list[exchg_index] = temp1;
@@ -1265,8 +1269,8 @@ _clbptWPacketBufferRootHandler(
 			work_group_barrier(CLK_LOCAL_MEM_FENCE);
 			for (offset = (bitonic_max_level >> 1); offset != 0; offset >>= 1) {
 				if ((gid & ((offset << 1) - 1)) < offset) {
-					if ((getKey((temp1 = proc_list[gid]).key) > 
-						getKey((temp2 = 
+					if ((getKey((temp1 = proc_list[gid]).key) >
+						getKey((temp2 =
 							proc_list[exchg_index = gid + offset]).key) ||
 						temp1.child == NULL) && exchg_index < CLBPT_ORDER * 2)
 					{
@@ -1333,7 +1337,7 @@ _clbptWPacketBufferRootHandler(
 		if (gid < proc_num_entry - half_c(proc_num_entry)) {
 			if (gid == 0) {
 				new_sibling->entry[0].key = KEY_MIN;
-				new_sibling->entry[0].child = 
+				new_sibling->entry[0].child =
 					proc_list[half_c(proc_num_entry)].child;
 			}
 			else {
@@ -1343,4 +1347,3 @@ _clbptWPacketBufferRootHandler(
 		}
 	}
 }
-
