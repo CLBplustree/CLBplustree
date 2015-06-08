@@ -217,10 +217,10 @@ int _clbptInitialize(clbpt_tree tree)
 	global_work_size = local_work_size = 1;
 	err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
 	assert(err == 0);
-	tree->property = (clbpt_property)clEnqueueMapBuffer(queue, property_d, CL_TRUE, CL_MAP_READ, 0, sizeof(clbpt_property), 0, NULL, NULL, &err);
+	tree->property = *(clbpt_property *)clEnqueueMapBuffer(queue, property_d, CL_TRUE, CL_MAP_READ, 0, sizeof(clbpt_property), 0, NULL, NULL, &err);
 	assert(err == 0);
 
-	tree->leaf->parent = tree->property->root;
+	tree->leaf->parent = (clbpt_int_node *)tree->property.root;
 
 	// DEBUG used
 	//fprintf(stderr, "Initialize SUCCESS\n");
@@ -364,7 +364,7 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 	assert(err == 0);
 
 	// <DEBUG>
-	/*
+	///*
 	fprintf(stderr, "After sort\n");
 	fprintf(stderr, "_Execute_buf_\n");
 	for (i = 0; i < buf_size; i++) {
@@ -388,7 +388,7 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 	}
 	fprintf(stderr, "size = %d\n", i);
 	fprintf(stderr, "\n");
-	*/
+	//*/
 
 	tree->execute_result_buf = (void **)clEnqueueMapBuffer(queue, result_buf_d, CL_TRUE, CL_MAP_READ, 0, buf_size * sizeof(void *), 0, NULL, NULL, &err);
 	assert(err == 0);
@@ -518,6 +518,9 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 			// DEBUG
 			fprintf(stderr, "Before insert\n");
 			fprintf(stderr, "insert key = %d\n", key);
+			//int temp = *((int32_t *)((clbpt_leaf_node *)node_addr)->head->record_ptr);
+			if (((clbpt_leaf_node *)node_addr)->head != NULL)
+				fprintf(stderr, "insert to node with head = %d\n", *(int32_t *)(((clbpt_leaf_node *)node_addr)->head->record_ptr));
 			show_leaf(tree->leaf);
 			instr_result = insert_leaf(key, node_addr);
 			fprintf(stderr, "After insert\n");
@@ -929,6 +932,8 @@ int insert_leaf(int32_t key, void *node_addr)
 	entry = (clbpt_leaf_entry *)malloc(sizeof(clbpt_leaf_entry));
 	entry->next = node->head;
 	entry_free = entry;
+
+	//fprintf(stderr, "insert key: %d, to leafnode with head: %d\n", key, *((int32_t *)node->head->record_ptr));
 
 	// scan through
 	while(entry->next != NULL)

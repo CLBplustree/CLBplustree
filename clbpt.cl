@@ -71,7 +71,7 @@ typedef struct _clbpt_leafmirror {
 
 #define getKeyFromEntry(X) (int)(((X.key) << 1) & 0x80000000 | (X.key) & 0x7FFFFFFF)
 #define getChildFromEntry(X) (X.child)
-#define ENTRY_NULL ((clbpt_entry){.child = 0})
+#define ENTRY_NULL ((clbpt_entry){.key = 0x3FFFFFFF, .child = 0})
 #define isNullEntry(X) ((X).child == 0)
 
 #define getParentKeyFromNode(X) (int)((((X).parent_key) << 1) & 0x80000000 | ((X).parent_key) & 0x7FFFFFFF)
@@ -175,11 +175,14 @@ _clbptWPacketBufferPreRootHandler(
 	new_root->entry[0].key = KEY_MIN;
 	new_root->entry[0].child = property->root;
 	((clbpt_leafmirror *)(new_root->entry[0].child))->parent =
-		(uintput_t)new_root;
+		(uintptr_t)new_root;
 	new_root->entry[1] = ins[0].entry;
 	((clbpt_leafmirror *)(new_root->entry[1].child))->parent =
-		(uintput_t)new_root;
+		(uintptr_t)new_root;
 	property->root = (uintptr_t)new_root;
+	printf("0: %x\n", (((clbpt_leafmirror *)(((clbpt_int_node *)(property->root))->entry[0].child)))->leaf);
+	printf("%d\n", getKey(((clbpt_int_node *)(property->root))->entry[1].key));
+	printf("1: %x\n", (((clbpt_leafmirror *)(((clbpt_int_node *)(property->root))->entry[1].child)))->leaf);
 	property->level += 1;
 }
 
@@ -514,7 +517,6 @@ _binary_search(
 	int target_key
 	)
 {
-	int key;
 	uint index_entry_high, index_entry_low, index_entry_mid;
 
 	index_entry_low = 0;
@@ -524,10 +526,10 @@ _binary_search(
 		if (index_entry_mid == node->num_entry - 1) {
 			break;
 		}
-		else if (key < getKeyFromEntry(node->entry[index_entry_mid])) {
+		else if (target_key < getKeyFromEntry(node->entry[index_entry_mid])) {
 			index_entry_high = index_entry_mid - 1;
 		}
-		else if (key >= getKeyFromEntry(node->entry[index_entry_mid + 1])) {
+		else if (target_key >= getKeyFromEntry(node->entry[index_entry_mid + 1])) {
 			index_entry_low = index_entry_mid + 1;
 		}
 		else {
@@ -590,6 +592,7 @@ _clbptWPacketInit(
 		new_alloc = (clbpt_leafmirror *)malloc(heap, sizeof(clbpt_leafmirror));
 		new_alloc->leaf = addr[gid];
 		new_alloc->parent = ((clbpt_leafmirror *)(ins[gid].target))->parent;
+		ins[gid].target = ((clbpt_leafmirror *)(ins[gid].target))->parent;
 		ins[gid].entry.child = (uintptr_t)new_alloc;
 	}
 	// Initialize Delete Packet
@@ -610,7 +613,7 @@ _clbptWPacketInit(
 			enqueue_kernel(
 				get_default_queue(),
 				CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
-				ndrange_1D(CLBPT_ORDER, CLBPT_ORDER),
+				ndrange_1D(2 * CLBPT_ORDER, 2 * CLBPT_ORDER),
 				^{
 					 _clbptWPacketBufferHandler(ins, num_ins, del, num_del,
 						heap, property, level_proc);
@@ -619,11 +622,10 @@ _clbptWPacketInit(
 		}
 		else if (level_proc == 0) {
 			// Handle root node layer
-			printf("OCL: ins[0].target=%u\n", (uint)ins[0].target);
 			enqueue_kernel(
 				get_default_queue(),
 				CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
-				ndrange_1D(CLBPT_ORDER, CLBPT_ORDER),
+				ndrange_1D(2 * CLBPT_ORDER, 2 * CLBPT_ORDER),
 				^(__local void *proc_list){
 					_clbptWPacketBufferRootHandler(proc_list, ins, num_ins, del,
 						num_del, heap, property);
@@ -809,7 +811,7 @@ _clbptWPacketCompact(
 			enqueue_kernel(
 				get_default_queue(),
 				CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
-				ndrange_1D(CLBPT_ORDER, CLBPT_ORDER),
+				ndrange_1D(2 * CLBPT_ORDER, 2 * CLBPT_ORDER),
 				^{
 					_clbptWPacketBufferHandler(ins,	num_ins, del, num_del,
 						heap, property, level_proc);
@@ -821,7 +823,7 @@ _clbptWPacketCompact(
 			enqueue_kernel(
 				get_default_queue(),
 				CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
-				ndrange_1D(CLBPT_ORDER, CLBPT_ORDER),
+				ndrange_1D(2 * CLBPT_ORDER, 2 * CLBPT_ORDER),
 				^(__local void *proc_list){
 					_clbptWPacketBufferRootHandler(proc_list, ins, num_ins, del,
 						num_del, heap, property);
@@ -931,6 +933,7 @@ _clbptWPacketGroupHandler(
 	if (gid < target->num_entry) {
 		proc_list[gid] = target->entry[gid];
 	}
+
 	// Delete
 	if (gid < num_del) {
 		int target_key;
@@ -1225,7 +1228,6 @@ _clbptWPacketBufferRootHandler(
 	else {
 		target = (clbpt_int_node *)(del[0].target);
 	}
-	printf("OCL: %u\n", (uint)target);
 
 	if (gid < target->num_entry) {
 		proc_list[gid] = target->entry[gid];
@@ -1246,6 +1248,7 @@ _clbptWPacketBufferRootHandler(
 	if (gid < num_ins) {
 		proc_list[CLBPT_ORDER + gid] = ins[gid].entry;
 	}
+	work_group_barrier(CLK_LOCAL_MEM_FENCE);
 	if (gid < 2 * CLBPT_ORDER) {
 		uint bitonic_max_level, offset, local_offset;
 		size_t exchg_index;
@@ -1257,31 +1260,36 @@ _clbptWPacketBufferRootHandler(
 			if ((local_offset = gid & ((bitonic_max_level << 1) - 1))
 				< bitonic_max_level)
 			{
-				if ((getKey((temp1 = proc_list[gid]).key) >
-					getKey((temp2 = proc_list[exchg_index = gid +
-						((bitonic_max_level - local_offset) << 1) - 1]).key) ||
-					temp1.child == NULL) && exchg_index < CLBPT_ORDER * 2)
+				temp1 = proc_list[gid];
+				temp2 = proc_list[exchg_index = gid +
+						((bitonic_max_level - local_offset) << 1) - 1];
+				if (exchg_index < CLBPT_ORDER * 2 && 
+					getKey(temp1.key) > getKey(temp2.key))
 				{
 					proc_list[gid] = temp2;
 					proc_list[exchg_index] = temp1;
+					//printf("OCL: ex: %u %u\n", gid, exchg_index);
 				}
 			}
 			work_group_barrier(CLK_LOCAL_MEM_FENCE);
 			for (offset = (bitonic_max_level >> 1); offset != 0; offset >>= 1) {
 				if ((gid & ((offset << 1) - 1)) < offset) {
-					if ((getKey((temp1 = proc_list[gid]).key) >
-						getKey((temp2 =
-							proc_list[exchg_index = gid + offset]).key) ||
-						temp1.child == NULL) && exchg_index < CLBPT_ORDER * 2)
+					temp1 = proc_list[gid];
+					temp2 = proc_list[exchg_index = gid + offset];
+					if (exchg_index < CLBPT_ORDER * 2 && 
+						getKey(temp1.key) > getKey(temp2.key))
 					{
 						proc_list[gid] = temp2;
 						proc_list[exchg_index] = temp1;
+						//printf("OCL: ex: %u %u\n", gid, exchg_index);
 					}
 				}
 				work_group_barrier(CLK_LOCAL_MEM_FENCE);
 			}
+
 		}
 	}
+
 	// Count num_entry
 	uint proc_num_entry;
 	{
@@ -1291,6 +1299,14 @@ _clbptWPacketBufferRootHandler(
 		}
 		proc_num_entry = work_group_reduce_add(valid);
 	}
+	/*
+	printf("OCL: proc_num_entry=%u\n", proc_num_entry);
+	if (gid == 0) { 
+		for (int i = 0; i < 2 * CLBPT_ORDER; i++) { 
+			printf("OCL: #%d: %d %u\n", i, getKey(proc_list[i].key), proc_list[i].child);
+		}
+	}
+	*/
 
 	// Handle proc
 	if (proc_num_entry == 1) {
@@ -1314,7 +1330,7 @@ _clbptWPacketBufferRootHandler(
 		// Need upleveling
 		clbpt_int_node *new_root;
 		clbpt_int_node *new_sibling;
-
+		printf("OCL: Please reduce the number of inserts.\n");
 		if (gid == 0) {
 			new_root = (clbpt_int_node *)malloc(heap, sizeof(clbpt_int_node));
 			new_sibling = (clbpt_int_node *)malloc
