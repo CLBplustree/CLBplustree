@@ -325,11 +325,9 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 	assert(err == 0);
 	err = clEnqueueReadBuffer(queue, wait_buf_d, CL_TRUE, 0, buf_size * sizeof(clbpt_packet), tree->wait_buf, 0, NULL, NULL);
 	assert(err == 0);
-	err = clEnqueueReadBuffer(queue, result_buf_d, CL_TRUE, 0, buf_size * sizeof(void *), tree->execute_result_buf, 0, NULL, NULL);
-	assert(err == 0);
 
 	if (isEmpty)
-		return 1;
+		return isEmpty;
 
 	// <DEBUG>
 	/*
@@ -368,9 +366,11 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 	assert(err == 0);
 	err = clEnqueueReadBuffer(queue, execute_buf_d, CL_TRUE, 0, buf_size * sizeof(clbpt_packet),tree->execute_buf, 0, NULL, NULL);
 	assert(err == 0);
+	err = clEnqueueReadBuffer(queue, result_buf_d, CL_TRUE, 0, buf_size * sizeof(void *), tree->execute_result_buf, 0, NULL, NULL);
+	assert(err == 0);
 
 	// <DEBUG>
-	///*
+	/*
 	fprintf(stderr, "After sort\n");
 	fprintf(stderr, "_Execute_buf_\n");
 	for (i = 0; i < buf_size; i++) {
@@ -394,9 +394,9 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 	}
 	fprintf(stderr, "size = %d\n", i);
 	fprintf(stderr, "\n");
-	//*/
+	*/
 
-	return 0;
+	return isEmpty;
 }
 
 int _clbptHandleExecuteBuffer(clbpt_tree tree)
@@ -411,8 +411,9 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 
 	// clmem allocation
 
+	// get num_packet
 	int num_packet;
-	for (num_packet = 0; num_packet < buf_size; num_packet++)
+	for(num_packet = 0; num_packet < buf_size; num_packet++)
 	{
 		if (isNopPacket((clbpt_packet)tree->execute_buf[num_packet]))
 			break;
@@ -455,9 +456,11 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 
 		if (isNopPacket(pkt))
 		{
-			if (i == 0) break;
+			if (i == 0)
+				break;
+
 			node_result = handle_node(node_addr);
-			
+
 			if (node_result > 0)	// insertion pkts rollback to waiting buffer
 			{
 				// DEBUG
@@ -938,7 +941,7 @@ int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_add
 
 int insert_leaf(int32_t key, void *node_addr)
 {
-	int m, existed = 0;
+	int existed = 0;
 	clbpt_leaf_node *node;
 	clbpt_leaf_entry *entry_temp, *entry, *entry_free;
 
@@ -989,7 +992,7 @@ int insert_leaf(int32_t key, void *node_addr)
 
 int delete_leaf(int32_t key, void *node_addr)	// not sure is it able to borrow yet
 {
-	int m, existed = 0;
+	int existed = 0;
 	clbpt_leaf_node *node = node_addr;
 	clbpt_leaf_entry *entry_temp, *entry, *entry_free;
 
