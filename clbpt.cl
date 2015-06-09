@@ -544,7 +544,7 @@ _clbptSearch(
 	__global cpu_address_t *result,
 	__global clbpt_property *property,
 	__global clbpt_packet *execute,
-	__const uint buffer_size
+	__const uint num_packet
 	)
 {
 	uint gid = get_global_id(0);
@@ -552,7 +552,7 @@ _clbptSearch(
 	clbpt_int_node *node;
 	uint entry_index;
 
-	if (gid >= buffer_size) return;
+	if (gid >= num_packet) return;
 
 	key = getKeyFromPacket(execute[gid]);
 	node = (clbpt_int_node *)(property->root);
@@ -562,6 +562,7 @@ _clbptSearch(
 		printf("KERNEL: key=%d child=%d\n", getKey(node->entry[1].key), (int)(node->entry[1].child));
 		*/
 		entry_index = _binary_search(node, key);
+		printf("OCL: entry_index=%u\n", entry_index);
 		node = (clbpt_int_node *)getChildFromEntry(node->entry[entry_index]);
 	}
 	result[gid] = ((clbpt_leafmirror *)node)->leaf;

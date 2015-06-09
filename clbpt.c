@@ -62,6 +62,8 @@ void * _clbptHandler(void *tree)
 			if(((clbpt_tree)tree)->close_thread) pthread_exit(0);
 			fprintf(stderr, "select START\n");
 			isEmpty = _clbptSelectFromWaitBuffer((clbpt_tree)tree);
+			if (isEmpty)
+				break;
 			fprintf(stderr, "isEmpty = %d\n", isEmpty);
 			fprintf(stderr, "select COMPLETE\n");
 			fprintf(stderr, "handle START\n");

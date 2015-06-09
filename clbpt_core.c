@@ -217,7 +217,7 @@ int _clbptInitialize(clbpt_tree tree)
 	global_work_size = local_work_size = 1;
 	err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
 	assert(err == 0);
-	tree->property = *(clbpt_property *)clEnqueueMapBuffer(queue, property_d, CL_TRUE, CL_MAP_READ, 0, sizeof(clbpt_property), 0, NULL, NULL, &err);
+	err = clEnqueueReadBuffer(queue, property_d, CL_TRUE, 0, sizeof(clbpt_property), &(tree->property), 0, NULL, NULL);
 	assert(err == 0);
 
 	tree->leaf->parent = (clbpt_int_node *)tree->property.root;
@@ -323,14 +323,20 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 	assert(err == 0);
 	err = clEnqueueReadBuffer(queue, isEmpty_d, CL_TRUE, 0, sizeof(uint8_t), &isEmpty, 0, NULL, NULL);
 	assert(err == 0);
-	tree->wait_buf = (clbpt_packet *)clEnqueueMapBuffer(queue, wait_buf_d, CL_TRUE, CL_MAP_READ, 0, buf_size * sizeof(clbpt_packet), 0, NULL, NULL, &err);
+	err = clEnqueueReadBuffer(queue, wait_buf_d, CL_TRUE, 0, buf_size * sizeof(clbpt_packet), tree->wait_buf, 0, NULL, NULL);
+	assert(err == 0);
+	err = clEnqueueReadBuffer(queue, result_buf_d, CL_TRUE, 0, buf_size * sizeof(void *), tree->execute_result_buf, 0, NULL, NULL);
 	assert(err == 0);
 
-	// <DEBUG>
-	//tree->execute_buf = (clbpt_packet *)clEnqueueMapBuffer(queue, execute_buf_d, CL_TRUE, CL_MAP_READ, 0, buf_size * sizeof(clbpt_packet), 0, NULL, NULL, &err);
-	//assert(err == 0);
+	if (isEmpty)
+		return 1;
 
+	// <DEBUG>
 	/*
+	tree->execute_buf = (clbpt_packet *)clEnqueueMapBuffer(queue, execute_buf_d, CL_TRUE, CL_MAP_READ, 0, buf_size * sizeof(clbpt_packet), 0, NULL, NULL, &err);
+	assert(err == 0);
+
+	
 	fprintf(stderr, "Before sort\n");
 	fprintf(stderr, "_Execute_buf_\n");
 	for (i = 0; i < buf_size; i++) {
@@ -360,7 +366,7 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 	global_work_size = local_work_size = max_local_work_size;
 	err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
 	assert(err == 0);
-	tree->execute_buf = (clbpt_packet *)clEnqueueMapBuffer(queue, execute_buf_d, CL_TRUE, CL_MAP_READ, 0, buf_size * sizeof(clbpt_packet), 0, NULL, NULL, &err);
+	err = clEnqueueReadBuffer(queue, execute_buf_d, CL_TRUE, 0, buf_size * sizeof(clbpt_packet),tree->execute_buf, 0, NULL, NULL);
 	assert(err == 0);
 
 	// <DEBUG>
@@ -390,10 +396,7 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 	fprintf(stderr, "\n");
 	//*/
 
-	tree->execute_result_buf = (void **)clEnqueueMapBuffer(queue, result_buf_d, CL_TRUE, CL_MAP_READ, 0, buf_size * sizeof(void *), 0, NULL, NULL, &err);
-	assert(err == 0);
-
-	return isEmpty;
+	return 0;
 }
 
 int _clbptHandleExecuteBuffer(clbpt_tree tree)
@@ -408,6 +411,14 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 
 	// clmem allocation
 
+	int num_packet;
+	for (num_packet = 0; num_packet < buf_size; num_packet++)
+	{
+		if (isNopPacket((clbpt_packet)tree->execute_buf[num_packet]))
+			break;
+	}
+	printf("Host: num_pkt=%d\n", num_packet);
+
 	// kernel _clbptSearch
 	kernel = kernels[CLBPT_SEARCH];
 	err = clSetKernelArg(kernel, 0, sizeof(result_buf_d), (void *)&result_buf_d);
@@ -416,7 +427,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	assert(err == 0);
 	err = clSetKernelArg(kernel, 2, sizeof(execute_buf_d), (void *)&execute_buf_d);
 	assert(err == 0);
-	err = clSetKernelArg(kernel, 3, sizeof(buf_size), (void *)&buf_size);
+	err = clSetKernelArg(kernel, 3, sizeof(num_packet), (void *)&num_packet);
 	assert(err == 0);
 
 	// Search
@@ -424,12 +435,12 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	local_work_size = max_local_work_size;
 	err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
 	assert(err == 0);
-	tree->node_addr_buf = (void **)clEnqueueMapBuffer(queue, result_buf_d, CL_TRUE, CL_MAP_READ, 0, buf_size * sizeof(void *), 0, NULL, NULL, &err);
+	err = clEnqueueReadBuffer(queue, result_buf_d, CL_TRUE, 0, buf_size * sizeof(void *), tree->node_addr_buf, 0, NULL, NULL);
 	assert(err == 0);
 
 	// handle leaf nodes
 	int i, j, k;
-	int instr_result, node_result;
+	int instr_result, node_result = 0;
 	clbpt_packet pkt;
 	int32_t key, key_upper;
 	void *node_addr;
@@ -441,40 +452,10 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	{
 		pkt = tree->execute_buf[i];
 		key = getKeyFromPacket(pkt);
-		if (node_addr != tree->node_addr_buf[i])	// accessed node changed
-		{
-			node_result = handle_node(node_addr);
-
-			if (node_result > 0)	// insertion pkts rollback to waiting buffer
-			{
-				// DEBUG
-				fprintf(stderr, "Insert ROLLBACK\n");
-				fprintf(stderr, "node_result = %d\n", node_result);
-				k = i-1;
-				for (; node_result > 0; node_result--)
-				{
-					while (!isInsertPacket(tree->execute_buf[k]))
-					{
-						k--;
-					}
-					while(tree->wait_buf[j] != PACKET_NOP)
-					{
-						j++;
-					}
-					tree->wait_buf[j] = tree->execute_buf[k];
-					fprintf(stderr, "before delete\n");
-					show_leaf(tree->leaf);
-					delete_leaf(getKeyFromPacket(tree->execute_buf[k]), node_addr);
-					k--;
-				}
-				node_result = handle_node(node_addr);	// re-handle the node
-			}
-
-			node_addr = tree->node_addr_buf[i];
-		}
 
 		if (isNopPacket(pkt))
 		{
+			if (i == 0) break;
 			node_result = handle_node(node_addr);
 			
 			if (node_result > 0)	// insertion pkts rollback to waiting buffer
@@ -503,6 +484,39 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 			}
 			break;
 		}
+
+		if (node_addr != tree->node_addr_buf[i])	// accessed node changed
+		{
+			node_result = handle_node(node_addr);
+
+			if (node_result > 0)	// insertion pkts rollback to waiting buffer
+			{
+				// DEBUG
+				fprintf(stderr, "Insert ROLLBACK\n");
+				fprintf(stderr, "node_result = %d\n", node_result);
+				k = i - 1;
+				for (; node_result > 0; node_result--)
+				{
+					while (!isInsertPacket(tree->execute_buf[k]))
+					{
+						k--;
+					}
+					while (tree->wait_buf[j] != PACKET_NOP)
+					{
+						j++;
+					}
+					tree->wait_buf[j] = tree->execute_buf[k];
+					fprintf(stderr, "before delete\n");
+					show_leaf(tree->leaf);
+					delete_leaf(getKeyFromPacket(tree->execute_buf[k]), node_addr);
+					k--;
+				}
+				node_result = handle_node(node_addr);	// re-handle the node
+			}
+
+			node_addr = tree->node_addr_buf[i];
+		}
+
 		if (isSearchPacket(pkt))
 		{
 			fprintf(stderr, "search goes to node with head = %d\n", *(int32_t *)(((clbpt_leaf_node *)node_addr)->head->record_ptr));
@@ -597,7 +611,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	// assign leafmirror_addr to node_sibling's parent
 	if (num_ins != 0)
 	{
-		leafmirror_addr = (void **)clEnqueueMapBuffer(queue, leafmirror_addr_d, CL_TRUE, CL_MAP_READ, 0, num_ins * sizeof(void *), 0, NULL, NULL, &err);
+		err = clEnqueueReadBuffer(queue, leafmirror_addr_d, CL_TRUE, 0, num_ins * sizeof(void *),leafmirror_addr, 0, NULL, NULL);
 		assert(err == 0);
 
 		for(i = 0; i < num_ins; i++)

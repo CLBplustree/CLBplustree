@@ -57,13 +57,45 @@ int main()
 	clbptCreateTree(&t, p, 256, 64);
 	fprintf(stderr, "CreateTree SUCCESS\n");
 
-	int a[16] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
-	err = clbptEnqueueInsertions(t, 16, a, NULL);
+	int d[1] = { 7 };
+	err = clbptEnqueueInsertions(t, 1, d, NULL);
 	if (err != CL_SUCCESS)
 	{
 		fprintf(stderr, "EnqueInsertions ERROR\n");
 	}
 	clbptFinish(t);
+
+	printf("============");
+	int a[4] = { 10,3,5,6};
+	err = clbptEnqueueInsertions(t, 4, a, NULL);
+	if (err != CL_SUCCESS)
+	{
+		fprintf(stderr, "EnqueInsertions ERROR\n");
+	}
+	clbptFinish(t); 
+	///*
+	printf("============");
+
+	int b[2] = { 4,11 };
+	err = clbptEnqueueInsertions(t, 2, b, NULL);
+	if (err != CL_SUCCESS)
+	{
+		fprintf(stderr, "EnqueDeletions ERROR\n");
+	}
+	clbptFinish(t);
+	printf("============");
+
+	int c[2] = { 1,9 };
+	err = clbptEnqueueInsertions(t, 2, c, NULL);
+	if (err != CL_SUCCESS)
+	{
+		fprintf(stderr, "EnqueInsertions ERROR\n");
+	}
+	clbptFinish(t);
+	printf("============");
+
+	
+	//*/
 /*
 	int b[3] = {2,4,0};
 	err = clbptEnqueueSearches(t, 3, b, NULL);
@@ -80,6 +112,7 @@ int main()
 //	err = clReleaseProgram( program );
 	//err = clReleaseCommandQueue( command_queue );
 //	err = clReleaseContext( context );
+	getchar();
 	clbptReleaseTree(t);
  
 	return 0;
