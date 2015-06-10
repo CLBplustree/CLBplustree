@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include <CL/cl.h>
 #include "clbpt.h"
  
@@ -56,25 +57,35 @@ int main()
 	//cl_kernel kern = p->kernels[0];
 	clbptCreateTree(&t, p, 256, 64);
 	fprintf(stderr, "CreateTree SUCCESS\n");
-
-	int d[1] = { 7 };
+	
+	int d[10] = { 7,21,24,23,14,15,16,17,18,19 };
 	err = clbptEnqueueInsertions(t, 1, d, NULL);
 	if (err != CL_SUCCESS)
 	{
 		fprintf(stderr, "EnqueInsertions ERROR\n");
 	}
 	clbptFinish(t);
+	//getchar();
+	printf("============\n");
 
-	printf("============");
-	int a[4] = { 10,3,5,6};
-	err = clbptEnqueueInsertions(t, 4, a, NULL);
+	
+	int a[10] = { 10,3,5,6,2,8,11,12,13,1};
+	err = clbptEnqueueInsertions(t, 9, a, NULL);
 	if (err != CL_SUCCESS)
 	{
 		fprintf(stderr, "EnqueInsertions ERROR\n");
 	}
 	clbptFinish(t); 
+
+	err = clbptEnqueueDeletions(t, 3, a, NULL);
+	if (err != CL_SUCCESS)
+	{
+		fprintf(stderr, "EnqueInsertions ERROR\n");
+	}
+	clbptFinish(t);
+	getchar();
 	///*
-	printf("============");
+	printf("============\n");
 
 	int b[2] = { 4,11 };
 	err = clbptEnqueueInsertions(t, 2, b, NULL);
@@ -83,7 +94,7 @@ int main()
 		fprintf(stderr, "EnqueDeletions ERROR\n");
 	}
 	clbptFinish(t);
-	printf("============");
+	printf("============\n");
 
 	int c[2] = { 1,9 };
 	err = clbptEnqueueInsertions(t, 2, c, NULL);
@@ -92,7 +103,7 @@ int main()
 		fprintf(stderr, "EnqueInsertions ERROR\n");
 	}
 	clbptFinish(t);
-	printf("============");
+	printf("============\n/");
 
 	
 	//*/

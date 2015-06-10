@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 #include <pthread.h>
 //#include <unistd.h>
 
@@ -56,8 +57,8 @@ void * _clbptHandler(void *tree)
 	while (1)
 	{
 		_clbptLockWaitBuffer((clbpt_tree)tree);	/////
+		while(((clbpt_tree)tree)->is_Complete != 0);
 		if(((clbpt_tree)tree)->close_thread) pthread_exit(0);
-		((clbpt_tree)tree)->is_Complete = 0;
 		do {
 			if(((clbpt_tree)tree)->close_thread) pthread_exit(0);
 			fprintf(stderr, "select START\n");
@@ -101,9 +102,9 @@ int _clbptBufferExchange(clbpt_tree tree)
 	tree->result_buf = tree->execute_result_buf;
 	tree->execute_result_buf = result_buf_temp;
 	fprintf(stderr, "buffer exchange COMPLETE\n");
+	//while (pthread_mutex_trylock(&tree->buffer_mutex) == 0)_clbptUnlockWaitBuffer(tree);
 	int err = _clbptUnlockWaitBuffer(tree);
-	if (err != CLBPT_SUCCESS)
-		return err;
+	assert(err == CLBPT_SUCCESS);
 	return CLBPT_SUCCESS;
 }
 
@@ -114,7 +115,8 @@ int clbptEnqueueFecthBuffer(
 {
 	if (tree->fetch_buf_index >= CLBPT_BUF_SIZE)
 	{
-		_clbptBufferExchange(tree);
+		//_clbptBufferExchange(tree);
+		clbptFinish(tree);
 	}
 	tree->fetch_buf[tree->fetch_buf_index] = packet;
 
@@ -277,10 +279,11 @@ int clbptFlush(clbpt_tree tree)
 int clbptFinish(clbpt_tree tree)
 {
 	fprintf(stderr,"Enter finish\n");
-	while(!tree->is_Complete);
+	while (!tree->is_Complete);
 	tree->is_Complete = 0;
 	int err = clbptFlush(tree);
 	if (err != CLBPT_SUCCESS) return err;
+	//while (pthread_mutex_trylock(&tree->buffer_mutex) == 0)_clbptUnlockWaitBuffer(tree);
 	while(!tree->is_Complete);
 	return CLBPT_SUCCESS;
 }

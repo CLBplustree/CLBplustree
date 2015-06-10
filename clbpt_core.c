@@ -546,6 +546,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 		else if (isDeletePacket(pkt))
 		{
 			instr_result = delete_leaf(key, node_addr);
+			show_leaf(tree->leaf);
 		}
 	}
 	fprintf(stderr, "num of pkts in buf = %d\n", i);
@@ -560,9 +561,6 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	{
 		return CL_SUCCESS;
 	}
-
-	
-	err = clEnqueueUnmapMemObject(queue, result_buf_d, tree->node_addr_buf, 0, NULL, NULL);
 
 	// clmem initialize
 	static cl_mem ins_d;	// static ???
@@ -611,17 +609,26 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
 	assert(err == 0);
 
+	fprintf(stderr, "enqueue wpacket init SUCCESS\n");
+
 	// assign leafmirror_addr to node_sibling's parent
+
+	fprintf(stderr, "num_ins = %d\n", num_ins);
+
 	if (num_ins != 0)
 	{
-		err = clEnqueueReadBuffer(queue, leafmirror_addr_d, CL_TRUE, 0, num_ins * sizeof(void *),leafmirror_addr, 0, NULL, NULL);
+		fprintf(stderr, "leafmirror with num_ins = %d\n", num_ins);
+		err = clEnqueueReadBuffer(queue, leafmirror_addr_d, CL_TRUE, 0, num_ins * sizeof(void *), leafmirror_addr, 0, NULL, NULL);
 		assert(err == 0);
+		fprintf(stderr, "Suck\n");
 
 		for(i = 0; i < num_ins; i++)
 		{
 			((clbpt_int_node *)addr[i])->parent = leafmirror_addr[i];
 		}
 	}
+
+	fprintf(stderr, "leafmirror_addr assign SUCCESS\n");
 
 	return CL_SUCCESS;
 }
@@ -710,6 +717,8 @@ int handle_node(void *node_addr)
 			//if (node->prev_node->num_entry - 1 < half_f(order))	// Merge
 			if (node->num_entry + node->prev_node->num_entry < order)	// Merge
 			{
+				fprintf(stderr, "Merging...\n");
+
 				node = node->prev_node;
 				node_sibling = node->next_node;
 				node->num_entry += node_sibling->num_entry;
@@ -736,6 +745,8 @@ int handle_node(void *node_addr)
 			{
 				node_sibling = node->prev_node;
 
+				fprintf(stderr, "node with head %d\n", *(int32_t *)node->head->record_ptr);
+
 				// delete old parent_key to internal node
 				del[num_del].target = node->parent;
 				del[num_del].key = node->parent_key;
@@ -744,11 +755,13 @@ int handle_node(void *node_addr)
 				m = half_f(node_sibling->num_entry + node->num_entry);
 				node->num_entry = node_sibling->num_entry + node->num_entry - m;
 				node_sibling->num_entry = m;
+				fprintf(stderr, "left node with %d entries, right node with %d entries\n", node_sibling->num_entry, node->num_entry);
 				entry_head = node_sibling->head;
-				while(m-- > 0)
+				for (; m > 0; m--)
 				{
 					entry_head = entry_head->next;
 				}
+				entry_head->next = node->head;
 				node->head = entry_head;
 				node->parent_key = *((int32_t *)entry_head->record_ptr);
 
