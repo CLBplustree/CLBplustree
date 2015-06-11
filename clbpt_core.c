@@ -444,7 +444,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	int instr_result, node_result = 0;
 	clbpt_packet pkt;
 	int32_t key, key_upper;
-	void *node_addr, *leftmost_node_addr;
+	void *node_addr, *leftmost_node_addr = NULL;
 	num_ins = 0;
 	num_del = 0;
 
@@ -490,7 +490,8 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 				leftmost_node_addr = node_addr;
 			}
 
-			haldle_leftmost_node(leftmost_node_addr);
+			if (leftmost_node_addr != NULL)
+				haldle_leftmost_node(leftmost_node_addr);
 
 			break;
 		}
@@ -528,8 +529,8 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 				leftmost_node_addr = node_addr;
 			}
 
-			if (((clbpt_leaf_node *)node_addr)->parent !=
-				((clbpt_leaf_node *)tree->node_addr_buf[i])->parent)	// parent changed, handle leftmost node
+			if (((clbpt_leaf_node *)node_addr)->parent->parent !=
+				((clbpt_leaf_node *)tree->node_addr_buf[i])->parent->parent)	// parent changed, handle leftmost node
 			{
 				haldle_leftmost_node(leftmost_node_addr);
 			}
@@ -709,7 +710,7 @@ int handle_node(void *node_addr)
 		node_sibling->head = entry_head;
 		node_sibling->prev_node = node;
 		node_sibling->next_node = node->next_node;
-		node_sibling->parent = node->parent;
+		node_sibling->parent = node->parent;	///// Error
 		node_sibling->parent_key = *((int32_t *)entry_head->record_ptr);
 		node->next_node = node_sibling;
 
