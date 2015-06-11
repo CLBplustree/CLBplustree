@@ -411,14 +411,14 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 
 	// clmem allocation
 
-	// get num_packet
-	int num_packet;
-	for(num_packet = 0; num_packet < buf_size; num_packet++)
+	// get num_packets
+	int num_packets;
+	for(num_packets = 0; num_packets < buf_size; num_packets++)
 	{
-		if (isNopPacket((clbpt_packet)tree->execute_buf[num_packet]))
+		if (isNopPacket((clbpt_packet)tree->execute_buf[num_packets]))
 			break;
 	}
-	printf("Host: num_pkt=%d\n", num_packet);
+	printf("Host: num_pkt=%d\n", num_packets);
 
 	// kernel _clbptSearch
 	kernel = kernels[CLBPT_SEARCH];
@@ -428,7 +428,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	assert(err == 0);
 	err = clSetKernelArg(kernel, 2, sizeof(execute_buf_d), (void *)&execute_buf_d);
 	assert(err == 0);
-	err = clSetKernelArg(kernel, 3, sizeof(num_packet), (void *)&num_packet);
+	err = clSetKernelArg(kernel, 3, sizeof(num_packets), (void *)&num_packets);
 	assert(err == 0);
 
 	// Search
@@ -444,7 +444,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	int instr_result, node_result = 0;
 	clbpt_packet pkt;
 	int32_t key, key_upper;
-	void *node_addr;
+	void *node_addr, *leftmost_node_addr;
 	num_ins = 0;
 	num_del = 0;
 
@@ -467,7 +467,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 				fprintf(stderr, "Insert ROLLBACK\n");
 				fprintf(stderr, "node_result = %d\n", node_result);
 				k = i-1;
-				for (; node_result > 0; node_result--)
+				for(; node_result > 0; node_result--)
 				{
 					while(!isInsertPacket(tree->execute_buf[k]))
 					{
@@ -485,6 +485,13 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 				}
 				node_result = handle_node(node_addr);	// re-handle the node
 			}
+			else if (node_result == leftMostNodeBorrowMerge)
+			{
+				leftmost_node_addr = node_addr;
+			}
+
+			haldle_leftmost_node(leftmost_node_addr);
+
 			break;
 		}
 
@@ -498,7 +505,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 				fprintf(stderr, "Insert ROLLBACK\n");
 				fprintf(stderr, "node_result = %d\n", node_result);
 				k = i - 1;
-				for (; node_result > 0; node_result--)
+				for(; node_result > 0; node_result--)
 				{
 					while (!isInsertPacket(tree->execute_buf[k]))
 					{
@@ -515,6 +522,16 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 					k--;
 				}
 				node_result = handle_node(node_addr);	// re-handle the node
+			}
+			else if (node_result == leftMostNodeBorrowMerge)
+			{
+				leftmost_node_addr = node_addr;
+			}
+
+			if (((clbpt_leaf_node *)node_addr)->parent !=
+				((clbpt_leaf_node *)tree->node_addr_buf[i])->parent)	// parent changed, handle leftmost node
+			{
+				haldle_leftmost_node(leftmost_node_addr);
 			}
 
 			node_addr = tree->node_addr_buf[i];
@@ -550,10 +567,6 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 		}
 	}
 	fprintf(stderr, "num of pkts in buf = %d\n", i);
-	if (node_result == leftMostNodeBorrowMerge)
-	{
-		haldle_leftmost_node(tree->leaf);
-	}
 
 	show_leaf(tree->leaf);		
 
@@ -712,7 +725,7 @@ int handle_node(void *node_addr)
 	}
 	else if (node->num_entry < half_f(order))	// Need Borrow or Merge
 	{
-		if (node->prev_node != NULL)
+		if (node->prev_node != NULL && node->prev_node->parent == node->parent)
 		{
 			//if (node->prev_node->num_entry - 1 < half_f(order))	// Merge
 			if (node->num_entry + node->prev_node->num_entry < order)	// Merge
@@ -757,11 +770,12 @@ int handle_node(void *node_addr)
 				node_sibling->num_entry = m;
 				fprintf(stderr, "left node with %d entries, right node with %d entries\n", node_sibling->num_entry, node->num_entry);
 				entry_head = node_sibling->head;
-				for (; m > 0; m--)
+				for(; m > 0; m--)
 				{
 					entry_head = entry_head->next;
 				}
 				entry_head->next = node->head;
+
 				node->head = entry_head;
 				node->parent_key = *((int32_t *)entry_head->record_ptr);
 
@@ -834,10 +848,12 @@ int haldle_leftmost_node(clbpt_leaf_node *node)
 			node_sibling->num_entry = node->num_entry + node_sibling->num_entry - m;
 			node->num_entry = m;
 			entry_head = node->head;
-			while(m-- > 0)
+			for(; m > 0; m--)
 			{
 				entry_head = entry_head->next;
 			}
+			entry_head->next = node_sibling->head;
+
 			node_sibling->head = entry_head;
 			if (parent_key_update)
 			{
