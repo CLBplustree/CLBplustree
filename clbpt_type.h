@@ -66,6 +66,11 @@ typedef struct _clbpt_int_node {
 	uint32_t parent_key;
 } clbpt_int_node;
 
+typedef struct _clbpt_leafmirror {
+	clbpt_int_node *parent;
+	void *leaf;
+} clbpt_leafmirror;
+
 typedef struct _clbpt_leaf_entry {
 	void *record_ptr;
 	struct _clbpt_leaf_entry *next;
@@ -76,7 +81,7 @@ typedef struct _clbpt_leaf_node {
 	uint32_t num_entry;
 	struct _clbpt_leaf_node *prev_node;
 	struct _clbpt_leaf_node *next_node;
-	clbpt_int_node *parent;
+	clbpt_leafmirror *mirror;
 	uint32_t parent_key;
 } clbpt_leaf_node;
 
@@ -118,6 +123,7 @@ struct _clbpt_tree {
 
 	clbpt_property property;
 	cl_mem heap;
+	void **heap_svm_ptr;
 	clbpt_leaf_node *leaf;
 	void *root;
 };
