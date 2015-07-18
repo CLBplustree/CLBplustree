@@ -595,6 +595,7 @@ _clbptWPacketInit(
 		new_alloc->parent = ((clbpt_leafmirror *)(ins[gid].target))->parent;
 		ins[gid].target = ((clbpt_leafmirror *)(ins[gid].target))->parent;
 		ins[gid].entry.child = (uintptr_t)new_alloc;
+		leafmirror_addr[gid] = (uintptr_t)new_alloc;
 	}
 	// Initialize Delete Packet
 	if (gid < num_del) {

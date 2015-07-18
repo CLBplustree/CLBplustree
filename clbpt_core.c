@@ -33,7 +33,7 @@ static uint32_t buf_size = CLBPT_BUF_SIZE;
 
 
 int handle_node(void *node_addr);
-int haldle_leftmost_node(clbpt_leaf_node *node);
+int handle_leftmost_node(clbpt_leaf_node *node);
 int search_leaf(int32_t key, void *node_addr, void *result_addr);
 int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_addr);
 int insert_leaf(int32_t key, void *node_addr);
@@ -163,10 +163,11 @@ int _clbptInitialize(clbpt_tree tree)
 
 	// Allocate SVM memory
 	size_t heap_size = sizeof(void*) * 2048;
-	//heap_svm_ptr = (void **)clSVMAlloc(context, CL_MEM_READ_WRITE, heap_size, 0);
 
 	// Create a buffer object using the SVM memory for KMA
-	kma_create_svm(device, context, queue, program, heap_size, tree->heap);
+	fprintf(stderr, "kma create START\n");
+	kma_create_svm(device, context, queue, program, heap_size, &(tree->heap));
+	fprintf(stderr, "kma create SUCCESS\n");
 	//tree->heap = kma_create_svm(device, context, queue, program, heap_size, heap_svm_ptr);
 	//tree->heap = clCreateBuffer(context, CL_MEM_USE_HOST_PTR, heap_size, heap_svm_ptr, NULL);
 	//tree->heap = kma_create(device, context, queue, program, 2048);
@@ -218,7 +219,7 @@ int _clbptInitialize(clbpt_tree tree)
 	assert(err == 0);
 	err = clSetKernelArg(kernel, 1, sizeof(property_d), (void *)&property_d);
 	assert(err == 0);
-	err = clSetKernelArgSVMPointer(kernel, 2, (void *)&tree->heap);
+	err = clSetKernelArgSVMPointer(kernel, 2, tree->heap);
 	//err = clSetKernelArg(kernel, 2, sizeof(tree->heap), (void *)&(tree->heap));
 	assert(err == 0);
 
@@ -446,7 +447,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 
 	// Handle leaf nodes
 	int i, j, k;
-	int *instr_result = (int *)calloc(buf_size * sizeof(int));
+	int *instr_result = (int *)calloc(buf_size, sizeof(int));
 	int node_result = 0;
 	clbpt_packet pkt;
 	int32_t key, key_upper;
@@ -457,16 +458,6 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	num_del = 0;
 
 	node_addr = tree->node_addr_buf[0];
-
-	err = clEnqueueSVMMap(
-		queue,
-		CL_TRUE,       // blocking map
-		CL_MAP_READ,
-		tree->heap,
-		sizeof(void*) * 2048,
-		0, 0, 0
-	);
-    assert(err == 0);
 
 	// Scan through the execute buffer
 	for(i = 0, j = 0; i < buf_size; i++)
@@ -491,6 +482,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 				k = i-1;
 				for(; node_result > 0; node_result--)
 				{
+					fprintf(stderr, "node_result = %d\n", node_result);
 					while(!isInsertPacket(tree->execute_buf[k]))	// Search backward for insertion packets in execute buffer
 					{
 						k--;
@@ -507,7 +499,11 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 
 					// HAS BUG
 					if (instr_result[k] == 0)	// Delete the entry if the rollback insertion packet did insert
+					{
 						delete_leaf(getKeyFromPacket(tree->execute_buf[k]), node_addr);
+						fprintf(stderr, "roll back delete\n");
+					}
+						
 					k--;
 				}
 				node_result = handle_node(node_addr);	// After rollback, re-handle the node
@@ -521,7 +517,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 			//if (((clbpt_leaf_node *)node_addr)->mirror->parent !=
 			//	((clbpt_leaf_node *)tree->node_addr_buf[i])->mirror->parent)	// node's parent is different with previous node, handle leftmost node
 			//{
-				haldle_leftmost_node(leftmost_node_addr);
+				//handle_leftmost_node(leftmost_node_addr);
 			//}
 
 			break;
@@ -570,7 +566,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 			if (((clbpt_leaf_node *)node_addr)->mirror->parent !=
 				((clbpt_leaf_node *)tree->node_addr_buf[i])->mirror->parent)	// node's parent is different with previous node, handle leftmost node
 			{
-				haldle_leftmost_node(leftmost_node_addr);
+				handle_leftmost_node(leftmost_node_addr);
 			}
 
 			node_addr = tree->node_addr_buf[i];
@@ -615,7 +611,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	/*
 	if (leftmost_node_need_change)
 	{
-		haldle_leftmost_node(tree->leaf);
+		handle_leftmost_node(tree->leaf);
 	}
 	*/
 	//<DEBUG>
@@ -623,12 +619,6 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	show_leaf(tree->leaf);
 	//</DEBUG>
 
-	err = clEnqueueSVMUnmap(
-		queue,
-		tree->heap,
-		0, 0, 0
-	);
-    assert(err == 0);
 
 	if (num_ins == 0 && num_del == 0)
 	{
@@ -671,7 +661,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	assert(err == 0);
 	err = clSetKernelArg(kernel, 5, sizeof(num_del), (void *)&num_del);
 	assert(err == 0);
-	err = clSetKernelArgSVMPointer(kernel, 6, (void *)&tree->heap);
+	err = clSetKernelArgSVMPointer(kernel, 6, tree->heap);
 	//err = clSetKernelArg(kernel, 6, sizeof(tree->heap), (void *)&(tree->heap));
 	assert(err == 0);
 	err = clSetKernelArg(kernel, 7, sizeof(property_d), (void *)&property_d);
@@ -699,7 +689,9 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 		for(i = 0; i < num_ins; i++)
 		{
 			((clbpt_leaf_node *)addr[i])->mirror = leafmirror_addr[i];
+			fprintf(stderr, "%p ", leafmirror_addr[i]);
 		}
+		fprintf(stderr, "\n");
 	}
 
 	fprintf(stderr, "leafmirror_addr assign SUCCESS\n");
@@ -753,6 +745,7 @@ int handle_node(void *node_addr)
 	fprintf(stderr, "handle node START\n");
 	if (node->num_entry >= order)	// Need Split
 	{
+		fprintf(stderr, "split\n");
 		if (node->num_entry > 2*(order-1))
 		{
 			// Insertion pkts rollback to waiting buffer
@@ -762,6 +755,7 @@ int handle_node(void *node_addr)
 		m = half_f(node->num_entry);
 		node_sibling->num_entry = node->num_entry - m;
 		node->num_entry = m;
+		printf("%d, %d\n", node_sibling->num_entry, node->num_entry);
 
 		entry_head = node->head;
 		for(; m > 0; m--)
@@ -860,12 +854,13 @@ int handle_node(void *node_addr)
 	return 0;
 }
 
-int haldle_leftmost_node(clbpt_leaf_node *node)
+int handle_leftmost_node(clbpt_leaf_node *node)
 {
 	int m, parent_key_update = 0;
 	clbpt_leaf_node *node_sibling;
 	clbpt_leaf_entry *entry_head;
 
+	fprintf(stderr, "handle_leftmost_node with num_entry = %d", node->num_entry);
 	if (node->num_entry >= half_f(order)) return 0;
 	if (node->next_node != NULL)
 	{
@@ -1149,6 +1144,9 @@ void show_leaf(clbpt_leaf_node *leaf)	// function for testing
 	}
 	while(temp->next_node != NULL)
 	{
+		//
+		fprintf(stderr, "\nparent: %p   ", temp->next_node->mirror->parent);
+		//
 		count = temp->next_node->num_entry;
 		entry = temp->next_node->head;
 		while(count-- > 0)

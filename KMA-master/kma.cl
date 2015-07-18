@@ -18,6 +18,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301
  * USA
  */
+ #pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable 
+
 #include "kma.h"
 
 /** Initialise the heap

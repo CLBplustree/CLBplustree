@@ -10,6 +10,7 @@
 #include <string.h>
 #include <assert.h>
 #include <pthread.h>
+#include <time.h>
 //#include <unistd.h>
 
 #define CLBPT_PACKET_SEARCH(x) ((( (clbpt_packet)(x) << 32 ) & 0x7FFFFFFF00000000 ) | 0x7FFFFFFF )
@@ -92,7 +93,6 @@ int _clbptUnlockWaitBuffer(clbpt_tree tree)
 
 int _clbptBufferExchange(clbpt_tree tree)
 {
-	//while(!tree->is_Complete);
 	clbpt_packet *fetch_buf_temp = tree->fetch_buf;
 	tree->fetch_buf = tree->wait_buf;
 	tree->wait_buf = fetch_buf_temp;
@@ -104,6 +104,7 @@ int _clbptBufferExchange(clbpt_tree tree)
 	fprintf(stderr, "buffer exchange COMPLETE\n");
 	//while (pthread_mutex_trylock(&tree->buffer_mutex) == 0)_clbptUnlockWaitBuffer(tree);
 	int err = _clbptUnlockWaitBuffer(tree);
+	tree->is_Complete = 0;
 	assert(err == CLBPT_SUCCESS);
 	return CLBPT_SUCCESS;
 }
@@ -280,10 +281,8 @@ int clbptFinish(clbpt_tree tree)
 {
 	fprintf(stderr,"Enter finish\n");
 	while (!tree->is_Complete);
-	tree->is_Complete = 0;
 	int err = clbptFlush(tree);
 	if (err != CLBPT_SUCCESS) return err;
-	//while (pthread_mutex_trylock(&tree->buffer_mutex) == 0)_clbptUnlockWaitBuffer(tree);
 	while(!tree->is_Complete);
 	return CLBPT_SUCCESS;
 }

@@ -41,8 +41,25 @@ int main()
 	err = clGetPlatformIDs( 1, &platform_id, &ret_num_platforms );
 	err_check( err, "clGetPlatformIDs" );
  
-	err = clGetDeviceIDs( platform_id, CL_DEVICE_TYPE_DEFAULT, 1, &device_id, &ret_num_devices );
-	err_check( err, "clGetDeviceIDs" );
+	err = clGetDeviceIDs( platform_id, CL_DEVICE_TYPE_CPU, 1, &device_id, &ret_num_devices );
+	err_check(err, "clGetDeviceIDs");
+	{
+		cl_device_svm_capabilities caps;
+
+		cl_int err = clGetDeviceInfo(
+			device_id,
+			CL_DEVICE_SVM_CAPABILITIES,
+			sizeof(cl_device_svm_capabilities),
+			&caps,
+			0
+			);
+
+		if (err != CL_SUCCESS)
+			fprintf(stderr, "No info!\n");
+		if (!(caps & CL_DEVICE_SVM_COARSE_GRAIN_BUFFER))
+			fprintf(stderr, "No support for svm!\n");
+	}
+
 
 	context = clCreateContext( NULL, 1, &device_id, NULL, NULL, &err );
 	err_check( err, "clCreateContext" );

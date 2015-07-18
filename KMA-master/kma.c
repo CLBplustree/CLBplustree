@@ -127,69 +127,70 @@ kma_create(cl_device_id dev, cl_context ctx, cl_command_queue cq,
 }
 
 //<ADDED>
-cl_mem
+void
 _kma_create_64_svm(cl_context ctx, cl_command_queue cq, unsigned int sblocks, void **host_ptr) {
 	cl_mem gQ = 0;
 	//cl_int error;
 	struct kma_heap_64 localHeap;
 
 	localHeap.bytes = (sblocks * KMA_SB_SIZE) + (sizeof(struct kma_heap_64));
-	host_ptr = (void **)clSVMAlloc(context, CL_MEM_READ_WRITE, localHeap.bytes, 0);
+	*host_ptr = clSVMAlloc(ctx, CL_MEM_READ_WRITE, localHeap.bytes, 0);
 	//gQ = clCreateBuffer(ctx, CL_MEM_USE_HOST_PTR, localHeap.bytes, host_ptr, &error);
-	if(host_ptr == NULL) {
+	if(*host_ptr == NULL) {
 		printf("KMA: Could not allocate heap on-device\n");
 		return (cl_mem) 0;
 	}
 
-	clEnqueueSVMMap(cq, CL_TRUE, CL_MAP_WRITE, host_ptr, localHeap.bytes, 0, NULL, NULL);
-	memcpy(host_ptr, &localHeap, sizeof(struct kma_heap_64));
+	clEnqueueSVMMap(cq, CL_TRUE, CL_MAP_WRITE, *host_ptr, localHeap.bytes, 0, NULL, NULL);
+	memcpy(*host_ptr, &localHeap, sizeof(struct kma_heap_64));
 	//error = clEnqueueWriteBuffer(cq, gQ, 0, 0, sizeof(struct kma_heap_64), &localHeap, 0, NULL, NULL);
-	clEnqueueSVMUnmap(cq, host_ptr, 0, NULL, NULL);
-	if(host_ptr == NULL) {
+	clEnqueueSVMUnmap(cq, *host_ptr, 0, NULL, NULL);
+	if(*host_ptr == NULL) {
 		printf("KMA: Could not setup heap on device\n");
 		return (cl_mem) 0;
 	}
 
 	clFinish(cq);
 
-	return gQ;
+	//return gQ;
 }
 
-cl_mem
+void
 _kma_create_32_svm(cl_context ctx, cl_command_queue cq, unsigned int sblocks, void **host_ptr) {
 	cl_mem gQ = 0;
 	//cl_int error;
 	struct kma_heap_32 localHeap;
 
 	localHeap.bytes = (sblocks * KMA_SB_SIZE) + (sizeof(struct kma_heap_32));
-	host_ptr = (void **)clSVMAlloc(context, CL_MEM_READ_WRITE, localHeap.bytes, 0);
+
+	*host_ptr = clSVMAlloc(ctx, 
+		CL_MEM_READ_WRITE | CL_MEM_SVM_FINE_GRAIN_BUFFER | CL_MEM_SVM_ATOMICS,
+		localHeap.bytes, 0);
 	//gQ = clCreateBuffer(ctx, CL_MEM_USE_HOST_PTR, localHeap.bytes, host_ptr, &error);
-	if(host_ptr == NULL) {
+	if(*host_ptr == NULL) {
 		printf("KMA: Could not allocate heap on-device\n");
 		return (cl_mem) 0;
 	}
 
-	clEnqueueSVMMap(cq, CL_TRUE, CL_MAP_WRITE, host_ptr, localHeap.bytes, 0, NULL, NULL);
-	memcpy(host_ptr, &localHeap, sizeof(struct kma_heap_64));
+	memcpy(*host_ptr, &localHeap, sizeof(struct kma_heap_64));
 	//error = clEnqueueWriteBuffer(cq, gQ, 0, 0, sizeof(struct kma_heap_32), &localHeap, 0, NULL, NULL);
-	clEnqueueSVMUnmap(cq, host_ptr, 0, NULL, NULL);
-	if(host_ptr == NULL) {
+	if(*host_ptr == NULL) {
 		printf("KMA: Could not setup heap on device\n");
 		return (cl_mem) 0;
 	}
 
 	clFinish(cq);
 
-	return gQ;
+	//return gQ;
 }
 
-cl_mem
+void
 kma_create_svm(cl_device_id dev, cl_context ctx, cl_command_queue cq,
 		cl_program prg, unsigned int sblocks, void **host_ptr)
 {
 	cl_int error;
 	cl_uint bits;
-	cl_mem q;
+	//cl_mem q;
 	cl_kernel kernel;
 	const size_t threads = 1;
 
@@ -204,9 +205,9 @@ kma_create_svm(cl_device_id dev, cl_context ctx, cl_command_queue cq,
 	}
 
 	if(bits == 32) {
-		q = _kma_create_32_svm(ctx, cq, sblocks, host_ptr);
+		_kma_create_32_svm(ctx, cq, sblocks, host_ptr);
 	} else {
-		q = _kma_create_64_svm(ctx, cq, sblocks, host_ptr);
+		_kma_create_64_svm(ctx, cq, sblocks, host_ptr);
 	}
 
 	if(host_ptr == NULL) {
@@ -220,7 +221,7 @@ kma_create_svm(cl_device_id dev, cl_context ctx, cl_command_queue cq,
 		printf("KMA: Could not create heap init kernel: %i\n", error);
 		return NULL;
 	}
-	error = clSetKernelArgSVMPointer(kernel, 0, (void *)&host_ptr);
+	error = clSetKernelArgSVMPointer(kernel, 0, *host_ptr);
 	if(error != CL_SUCCESS) {
 		printf("KMA: Wrong argument: %i\n", error);
 		return NULL;
@@ -235,6 +236,6 @@ kma_create_svm(cl_device_id dev, cl_context ctx, cl_command_queue cq,
 	}
 	clReleaseKernel(kernel);
 
-	return q;
+	//return q;
 }
 //</ADDED>
