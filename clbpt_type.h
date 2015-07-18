@@ -122,8 +122,9 @@ struct _clbpt_tree {
 	size_t record_size;
 
 	clbpt_property property;
-	cl_mem heap;
-	void **heap_svm_ptr;
+	void **heap;
+	//cl_mem heap;
+	//void **heap_svm_ptr;
 	clbpt_leaf_node *leaf;
 	void *root;
 };
