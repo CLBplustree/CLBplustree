@@ -163,10 +163,11 @@ int _clbptInitialize(clbpt_tree tree)
 
 	// Allocate SVM memory
 	size_t heap_size = sizeof(void*) * 2048;
-	heap_svm_ptr = (void **)clSVMAlloc(context, CL_MEM_READ_WRITE, heap_size, 0);
+	//heap_svm_ptr = (void **)clSVMAlloc(context, CL_MEM_READ_WRITE, heap_size, 0);
 
 	// Create a buffer object using the SVM memory for KMA
-	tree->heap = kma_create_svm(device, context, queue, program, heap_size, heap_svm_ptr);
+	kma_create_svm(device, context, queue, program, heap_size, tree->heap);
+	//tree->heap = kma_create_svm(device, context, queue, program, heap_size, heap_svm_ptr);
 	//tree->heap = clCreateBuffer(context, CL_MEM_USE_HOST_PTR, heap_size, heap_svm_ptr, NULL);
 	//tree->heap = kma_create(device, context, queue, program, 2048);
 
@@ -217,7 +218,8 @@ int _clbptInitialize(clbpt_tree tree)
 	assert(err == 0);
 	err = clSetKernelArg(kernel, 1, sizeof(property_d), (void *)&property_d);
 	assert(err == 0);
-	err = clSetKernelArg(kernel, 2, sizeof(tree->heap), (void *)&(tree->heap));
+	err = clSetKernelArgSVMPointer(kernel, 2, (void *)&tree->heap);
+	//err = clSetKernelArg(kernel, 2, sizeof(tree->heap), (void *)&(tree->heap));
 	assert(err == 0);
 
 	// Initialize
@@ -460,7 +462,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 		queue,
 		CL_TRUE,       // blocking map
 		CL_MAP_READ,
-		heap_svm_ptr,
+		tree->heap,
 		sizeof(void*) * 2048,
 		0, 0, 0
 	);
@@ -621,9 +623,9 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	show_leaf(tree->leaf);
 	//</DEBUG>
 
-	err = clEnqueueSVMUnMap(
+	err = clEnqueueSVMUnmap(
 		queue,
-		heap_svm_ptr,
+		tree->heap,
 		0, 0, 0
 	);
     assert(err == 0);
@@ -669,7 +671,8 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	assert(err == 0);
 	err = clSetKernelArg(kernel, 5, sizeof(num_del), (void *)&num_del);
 	assert(err == 0);
-	err = clSetKernelArg(kernel, 6, sizeof(tree->heap), (void *)&(tree->heap));
+	err = clSetKernelArgSVMPointer(kernel, 6, (void *)&tree->heap);
+	//err = clSetKernelArg(kernel, 6, sizeof(tree->heap), (void *)&(tree->heap));
 	assert(err == 0);
 	err = clSetKernelArg(kernel, 7, sizeof(property_d), (void *)&property_d);
 	assert(err == 0);
@@ -736,7 +739,7 @@ int _clbptReleaseLeaf(clbpt_tree tree)
 	free(addr);
 	free(leafmirror_addr);
 	free(tree->node_addr_buf);
-	clSVMFree(tree->platform->context, heap_svm_ptr);
+	clSVMFree(tree->platform->context, tree->heap);
 
 	return CL_SUCCESS;
 }
