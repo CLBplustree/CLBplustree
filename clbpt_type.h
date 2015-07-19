@@ -27,7 +27,7 @@
 #define CLBPT_STATUS_WAIT 1
 
 // KERNEL
-#define NUM_KERNELS 9
+#define NUM_KERNELS 10
 #define CLBPT_PACKET_SELECT 0
 #define CLBPT_PACKET_SORT 1
 #define CLBPT_INITIALIZE 2
@@ -37,6 +37,7 @@
 #define CLBPT_WPACKET_INIT 6
 #define CLBPT_WPACKET_COMPACT 7
 #define CLBPT_WPACKET_SUPER_GROUP_HANDLER 8
+#define CLBPT_PRINT_TREE_KERNEL_WRAPPER 9
 
 struct _clbpt_platform {
 	cl_context context;
