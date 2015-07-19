@@ -180,9 +180,6 @@ _clbptWPacketBufferPreRootHandler(
 	((clbpt_leafmirror *)(new_root->entry[1].child))->parent =
 		(uintptr_t)new_root;
 	property->root = (uintptr_t)new_root;
-	printf("0: %x\n", (((clbpt_leafmirror *)(((clbpt_int_node *)(property->root))->entry[0].child)))->leaf);
-	printf("%d\n", getKey(((clbpt_int_node *)(property->root))->entry[1].key));
-	printf("1: %x\n", (((clbpt_leafmirror *)(((clbpt_int_node *)(property->root))->entry[1].child)))->leaf);
 	property->level += 1;
 }
 
@@ -557,12 +554,7 @@ _clbptSearch(
 	key = getKeyFromPacket(execute[gid]);
 	node = (clbpt_int_node *)(property->root);
 	for (int i = 0; i < property->level - 1; i++) {
-		/*
-		printf("KERNEL: key=%d child=%d\n", getKey(node->entry[0].key), (int)(node->entry[0].child));
-		printf("KERNEL: key=%d child=%d\n", getKey(node->entry[1].key), (int)(node->entry[1].child));
-		*/
 		entry_index = _binary_search(node, key);
-		printf("OCL: entry_index=%u\n", entry_index);
 		node = (clbpt_int_node *)getChildFromEntry(node->entry[entry_index]);
 	}
 	result[gid] = ((clbpt_leafmirror *)node)->leaf;
@@ -1270,7 +1262,6 @@ _clbptWPacketBufferRootHandler(
 				{
 					proc_list[gid] = temp2;
 					proc_list[exchg_index] = temp1;
-					//printf("OCL: ex: %u %u\n", gid, exchg_index);
 				}
 			}
 			work_group_barrier(CLK_LOCAL_MEM_FENCE);
@@ -1283,7 +1274,6 @@ _clbptWPacketBufferRootHandler(
 					{
 						proc_list[gid] = temp2;
 						proc_list[exchg_index] = temp1;
-						//printf("OCL: ex: %u %u\n", gid, exchg_index);
 					}
 				}
 				work_group_barrier(CLK_LOCAL_MEM_FENCE);
@@ -1301,14 +1291,6 @@ _clbptWPacketBufferRootHandler(
 		}
 		proc_num_entry = work_group_reduce_add(valid);
 	}
-	/*
-	printf("OCL: proc_num_entry=%u\n", proc_num_entry);
-	if (gid == 0) { 
-		for (int i = 0; i < 2 * CLBPT_ORDER; i++) { 
-			printf("OCL: #%d: %d %u\n", i, getKey(proc_list[i].key), proc_list[i].child);
-		}
-	}
-	*/
 
 	// Handle proc
 	if (proc_num_entry == 1) {
@@ -1364,4 +1346,80 @@ _clbptWPacketBufferRootHandler(
 			}
 		}
 	}
+}
+
+// These functions are for debug use
+void
+_clbptPrintMirror(
+		int level,
+		clbpt_leafmirror *mirror
+	)
+{
+	for (int i = 0; i < level; i++)
+		printf(" ");
+#if CPU_BITNESS == 32
+	printf("Mirror:%p (parent=%p, leaf=%u)\n", 
+		(void *)mirror, (void *)mirror->parent, mirror->leaf);
+#else
+	printf("Mirror:%p (parent=%p, leaf=%lu)\n", 
+		(void *)mirror, (void *)mirror->parent, mirror->leaf);
+#endif
+	
+}
+
+void
+_clbptPrintNode(
+	int level_proc,
+	int level_tree,
+	clbpt_int_node *node
+	)
+{
+	for (int i = 0; i < level_proc; i++)
+		printf(" ");
+	printf("Node:%p (num_entry=%u, parent=%p, parent_key=%u)\n",
+		(void *)node, node->num_entry, (void *)node->parent, node->parent_key);
+	if (level_proc < level_tree - 2)
+		for (int i = 0; i < node->num_entry; i++) {
+			for (int j = 0; j < level_proc; j++)
+				printf(" ");
+			printf(">Entry #%d (key=%u, child=%p)\n", 
+				i, node->entry[i].key, (void *)node->entry[i].child);
+			_clbptPrintNode(level_proc + 1, level_tree, 
+				(clbpt_int_node *)node->entry[i].child);
+		}
+	else
+		for (int i = 0; i < node->num_entry; i++) {
+			for (int j = 0; j < level_proc; j++)
+				printf(" ");
+			printf(" Entry #%d (key=%u, child=%p)\n", 
+				i, node->entry[i].key, (void *)node->entry[i].child);
+			_clbptPrintMirror(level_proc + 1, 
+				(clbpt_leafmirror *)node->entry[i].child);
+		}
+
+}
+
+void
+_clbptPrintTree(
+	clbpt_property *property
+	)
+{
+	int level = property->level;
+	uintptr_t root = property->root;
+
+	printf("### Traversal of GPU-side tree ###\n");
+	printf("Level of tree: %d\n", level);
+	if (level <= 1)
+		_clbptPrintMirror((clbpt_leafmirror *)root);
+	else 
+		_clbptPrintNode(0, level, (clbpt_int_node *)root);
+}
+
+__kernel void
+_clbptPrintTreeKernelWrapper(
+	__global clbpt_property *property,
+	__global struct clheap *heap
+	)
+{
+	_clbptPrintTree(property);
 }
