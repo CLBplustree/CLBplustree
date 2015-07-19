@@ -38,8 +38,9 @@ int search_leaf(int32_t key, void *node_addr, void *result_addr);
 int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_addr);
 int insert_leaf(int32_t key, void *node_addr);
 int delete_leaf(int32_t key, void *node_addr);
-void show_tree(clbpt_tree tree);
+//void show_tree(clbpt_tree tree);
 void show_leaf(clbpt_leaf_node *leaf);	// function for testing
+void _clbptPrintTree(clbpt_property *property);
 
 int _clbptGetDevices(clbpt_platform platform)
 {
@@ -134,8 +135,7 @@ int _clbptCreateKernels(clbpt_platform platform)
 		"_clbptWPacketBufferRootHandler",
 		"_clbptWPacketInit",
 		"_clbptWPacketCompact",
-		"_clbptWPacketSuperGroupHandler",
-		"_clbptPrintTreeKernelWrapper",
+		"_clbptWPacketSuperGroupHandler"
 	};
 
 	for(i = 0; i < NUM_KERNELS; i++)
@@ -678,6 +678,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	assert(err == CL_SUCCESS);
 
 	fprintf(stderr, "enqueue wpacket init SUCCESS\n");
+	err = clEnqueueReadBuffer(queue, property_d, CL_TRUE, 0, sizeof(clbpt_property), &(tree->property), 0, NULL, NULL);
 
 	// assign leafmirror_addr to node_sibling's parent
 
@@ -699,6 +700,8 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	}
 
 	fprintf(stderr, "leafmirror_addr assign SUCCESS\n");
+
+	_clbptPrintTree(&tree->property);
 
 	return CL_SUCCESS;
 }
@@ -1134,6 +1137,7 @@ int _clbptDisplayTree(clbpt_tree tree)
 	return CL_SUCCESS;
 }
 
+/*
 void show_tree(clbpt_tree tree)	// function for testing
 {
 	cl_command_queue queue = tree->platform->queue;
@@ -1153,6 +1157,92 @@ void show_tree(clbpt_tree tree)	// function for testing
 	err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
 	assert(err == CL_SUCCESS);
 }
+*/
+
+void _clbptPrintLeaf(int level, clbpt_leaf_node *leaf)	// function for testing
+{
+	int count;
+	clbpt_leaf_entry *entry;
+
+	for (int i = 0; i < level; i++) {
+		fprintf(stderr, " ");
+	}
+	fprintf(stderr, "Leaf:%p (mirror=%p) ", leaf, leaf->mirror);
+	count = leaf->num_entry;
+	entry = leaf->head;
+	while (count-- > 0)
+	{
+		fprintf(stderr, "|%d", *((int *)entry->record_ptr));
+		entry = entry->next;
+	}
+	fprintf(stderr, "|   ");
+	fprintf(stderr, "\n");
+
+}
+
+void
+_clbptPrintMirror(
+	int level,
+	clbpt_leafmirror *mirror
+	)
+{
+	for (int i = 0; i < level; i++)
+		fprintf(stderr, " ");
+	fprintf(stderr, "Mirror:%p (parent=%p, leaf=%p)\n",
+		(void *)mirror, (void *)mirror->parent, mirror->leaf);
+	_clbptPrintLeaf(level + 1, mirror->leaf);
+}
+
+void
+_clbptPrintNode(
+	int level_proc,
+	int level_tree,
+	clbpt_int_node *node
+	)
+{
+	for (int i = 0; i < level_proc; i++)
+		fprintf(stderr, " ");
+	fprintf(stderr, "Node:%p (num_entry=%u, parent=%p, parent_key=%d)\n",
+		(void *)node, node->num_entry, (void *)node->parent,
+		getKey(node->parent_key));
+	if (level_proc < level_tree - 2)
+	for (int i = 0; i < node->num_entry; i++) {
+		for (int j = 0; j < level_proc; j++)
+			fprintf(stderr, " ");
+		fprintf(stderr, ">Entry #%d (key=%d, child=%p)\n",
+			i, getKey(node->entry[i].key), (void *)node->entry[i].child);
+		_clbptPrintNode(level_proc + 1, level_tree,
+			(clbpt_int_node *)node->entry[i].child);
+	}
+	else
+	for (int i = 0; i < node->num_entry; i++) {
+		for (int j = 0; j < level_proc; j++)
+			fprintf(stderr, " ");
+		fprintf(stderr, ">Entry #%d (key=%d, child=%p)\n",
+			i, getKey(node->entry[i].key), (void *)node->entry[i].child);
+		_clbptPrintMirror(level_proc + 1,
+			(clbpt_leafmirror *)node->entry[i].child);
+	}
+
+}
+
+void
+_clbptPrintTree(
+	clbpt_property *property
+	)
+{
+	int level = property->level;
+	uintptr_t root = property->root;
+
+	fprintf(stderr, "### Traversal of GPU-side tree ###\n");
+	fprintf(stderr, "Level of tree: %d\n", level);
+	if (level <= 1)
+		_clbptPrintMirror(0, (clbpt_leafmirror *)root);
+	else
+		_clbptPrintNode(0, level, (clbpt_int_node *)root);
+	fprintf(stderr, "### End of traversal ###\n");
+}
+
 
 void show_leaf(clbpt_leaf_node *leaf)	// function for testing
 {
@@ -1169,7 +1259,8 @@ void show_leaf(clbpt_leaf_node *leaf)	// function for testing
 	while(temp->next_node != NULL)
 	{
 		//
-		fprintf(stderr, "\nparent: %p   ", temp->next_node->mirror->parent);
+		fprintf(stderr, "\nmirror:¡@%p", temp->next_node->mirror);
+		fprintf(stderr, "\tparent: %p   ", temp->next_node->mirror->parent);
 		//
 		count = temp->next_node->num_entry;
 		entry = temp->next_node->head;

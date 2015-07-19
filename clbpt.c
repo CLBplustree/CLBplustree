@@ -243,10 +243,9 @@ int clbptEnqueueInsertions(
 	int i, err;
 	for (i = 0; i < num_inserts; i++)
 	{
-		int *tmp = malloc(sizeof(int));
 		err = clbptEnqueueFecthBuffer(
 			tree,
-			CLBPT_PACKET_INSERT(keys[i], tmp),
+			CLBPT_PACKET_INSERT(keys[i], 1),
 			records);
 		if (err != CLBPT_SUCCESS) return err;
 	}

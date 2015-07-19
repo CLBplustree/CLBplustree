@@ -1349,6 +1349,7 @@ _clbptWPacketBufferRootHandler(
 }
 
 // These functions are for debug use
+/*
 void
 _clbptPrintMirror(
 		int level,
@@ -1411,7 +1412,7 @@ _clbptPrintTree(
 	printf("### Traversal of GPU-side tree ###\n");
 	printf("Level of tree: %d\n", level);
 	if (level <= 1)
-		_clbptPrintMirror((clbpt_leafmirror *)root);
+		_clbptPrintMirror(0, (clbpt_leafmirror *)root);
 	else 
 		_clbptPrintNode(0, level, (clbpt_int_node *)root);
 }
@@ -1424,3 +1425,4 @@ _clbptPrintTreeKernelWrapper(
 {
 	_clbptPrintTree(property);
 }
+*/

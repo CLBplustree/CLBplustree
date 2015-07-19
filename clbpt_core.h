@@ -17,6 +17,7 @@
 #define isInsertPacket(X) (((uint8_t)((X) >> 63) & 0x1) && !((uint32_t)(X) == 0))
 #define isDeletePacket(X) (((uint8_t)((X) >> 63) & 0x1) && ((uint32_t)(X) == 0))
 #define getKeyFromEntry(X) (int)(((X.key) << 1) & 0x80000000 | (X.key) & 0x7FFFFFFF)
+#define getKey(X) (int)(((X) << 1) & 0x80000000 | (X) & 0x7FFFFFFF)
 
 //#define half_c(X) (((int)X+1)/2)
 #define half_f(X) (((int)X)/2)

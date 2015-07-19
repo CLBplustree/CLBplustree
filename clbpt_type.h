@@ -17,7 +17,7 @@
 #define CLBPT_RECORD_TYPE int
 
 // Temporary. Replace this by compiler option later.
-#define CLBPT_ORDER 128	// Should be less than or equal to half
+#define CLBPT_ORDER 4	// Should be less than or equal to half
 						// of MAX_LOCAL_SIZE
 
 //#define CLBPT_BUF_SIZE 65536
@@ -27,7 +27,7 @@
 #define CLBPT_STATUS_WAIT 1
 
 // KERNEL
-#define NUM_KERNELS 10
+#define NUM_KERNELS 9
 #define CLBPT_PACKET_SELECT 0
 #define CLBPT_PACKET_SORT 1
 #define CLBPT_INITIALIZE 2
@@ -37,7 +37,6 @@
 #define CLBPT_WPACKET_INIT 6
 #define CLBPT_WPACKET_COMPACT 7
 #define CLBPT_WPACKET_SUPER_GROUP_HANDLER 8
-#define CLBPT_PRINT_TREE_KERNEL_WRAPPER 9
 
 struct _clbpt_platform {
 	cl_context context;
@@ -57,13 +56,13 @@ typedef struct _clbpt_property {
 //typedef uint64_t clbpt_entry;
 typedef struct _clbpt_entry {
 	int32_t key;
-	void *child;
+	uintptr_t child;
 } clbpt_entry;
  
 typedef struct _clbpt_int_node {
 	clbpt_entry entry[CLBPT_ORDER];
 	uint32_t num_entry;
-	uint32_t *parent;
+	uintptr_t parent;
 	uint32_t parent_key;
 } clbpt_int_node;
 
