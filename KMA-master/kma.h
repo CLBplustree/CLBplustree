@@ -49,7 +49,7 @@ extern cl_mem kma_create(cl_device_id dev, cl_context ctx, cl_command_queue cq,
 		cl_program prg, unsigned int);
 
 //<ADDED>
-extern void kma_create_svm(cl_device_id dev, cl_context ctx, cl_command_queue cq,
+extern int kma_create_svm(cl_device_id dev, cl_context ctx, cl_command_queue cq,
 		cl_program prg, unsigned int, void *host_ptr);
 //</ADDED>
 
