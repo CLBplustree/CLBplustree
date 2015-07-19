@@ -1364,7 +1364,7 @@ _clbptPrintMirror(
 	printf("Mirror:%p (parent=%p, leaf=%lu)\n", 
 		(void *)mirror, (void *)mirror->parent, mirror->leaf);
 #endif
-	
+
 }
 
 void
@@ -1376,14 +1376,15 @@ _clbptPrintNode(
 {
 	for (int i = 0; i < level_proc; i++)
 		printf(" ");
-	printf("Node:%p (num_entry=%u, parent=%p, parent_key=%u)\n",
-		(void *)node, node->num_entry, (void *)node->parent, node->parent_key);
+	printf("Node:%p (num_entry=%u, parent=%p, parent_key=%d)\n",
+		(void *)node, node->num_entry, (void *)node->parent, 
+		getKey(node->parent_key));
 	if (level_proc < level_tree - 2)
 		for (int i = 0; i < node->num_entry; i++) {
 			for (int j = 0; j < level_proc; j++)
 				printf(" ");
-			printf(">Entry #%d (key=%u, child=%p)\n", 
-				i, node->entry[i].key, (void *)node->entry[i].child);
+			printf(">Entry #%d (key=%d, child=%p)\n", 
+				i, getKey(node->entry[i].key), (void *)node->entry[i].child);
 			_clbptPrintNode(level_proc + 1, level_tree, 
 				(clbpt_int_node *)node->entry[i].child);
 		}
@@ -1391,8 +1392,8 @@ _clbptPrintNode(
 		for (int i = 0; i < node->num_entry; i++) {
 			for (int j = 0; j < level_proc; j++)
 				printf(" ");
-			printf(" Entry #%d (key=%u, child=%p)\n", 
-				i, node->entry[i].key, (void *)node->entry[i].child);
+			printf(" Entry #%d (key=%d, child=%p)\n", 
+				i, getKey(node->entry[i].key), (void *)node->entry[i].child);
 			_clbptPrintMirror(level_proc + 1, 
 				(clbpt_leafmirror *)node->entry[i].child);
 		}
