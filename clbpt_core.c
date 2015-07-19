@@ -38,6 +38,7 @@ int search_leaf(int32_t key, void *node_addr, void *result_addr);
 int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_addr);
 int insert_leaf(int32_t key, void *node_addr);
 int delete_leaf(int32_t key, void *node_addr);
+void show_tree(clbpt_tree tree);
 void show_leaf(clbpt_leaf_node *leaf);	// function for testing
 
 int _clbptGetDevices(clbpt_platform platform)
@@ -1133,6 +1134,26 @@ int _clbptDisplayTree(clbpt_tree tree)
 	return CL_SUCCESS;
 }
 
+void show_tree(clbpt_tree tree)	// function for testing
+{
+	cl_command_queue queue = tree->platform->queue;
+	cl_kernel		*kernels = tree->platform->kernels;
+	cl_kernel		kernel;
+
+	// kernel _clbptPrintTreeKernelWrapper
+	kernel = kernels[CLBPT_PRINT_TREE_KERNEL_WRAPPER];
+	err = clSetKernelArg(kernel, 0, sizeof(property_d), (void *)&property_d);
+	assert(err == CL_SUCCESS);
+	err = clSetKernelArgSVMPointer(kernel, 1, tree->heap);
+	assert(err == CL_SUCCESS);
+
+	// PrintTreeKernelWrapper
+	global_work_size = local_work_size = 1;
+	fprintf(stderr, "Internal node:\n");
+	err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
+	assert(err == CL_SUCCESS);
+}
+
 void show_leaf(clbpt_leaf_node *leaf)	// function for testing
 {
 	int count;
@@ -1161,24 +1182,6 @@ void show_leaf(clbpt_leaf_node *leaf)	// function for testing
 		temp->next_node = temp->next_node->next_node;
 	}
 	fprintf(stderr, "\n");
-
-	fprintf(stderr, "\n\nInternal node:\n");
-
-
-	cl_kernel		*kernels = tree->platform->kernels;
-	cl_kernel		kernel;
-
-	// kernel _clbptPrintTreeKernelWrapper
-	kernel = kernels[CLBPT_PRINT_TREE_KERNEL_WRAPPER];
-	err = clSetKernelArg(kernel, 0, sizeof(property_d), (void *)&property_d);
-	assert(err == CL_SUCCESS);
-	err = clSetKernelArgSVMPointer(kernel, 1, tree->heap);
-	assert(err == CL_SUCCESS);
-
-	// PrintTreeKernelWrapper
-	global_work_size = local_work_size = 1;
-	err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
-	assert(err == CL_SUCCESS);
 
 	free(temp);
 }
