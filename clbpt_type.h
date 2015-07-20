@@ -123,8 +123,6 @@ struct _clbpt_tree {
 
 	clbpt_property property;
 	void *heap;
-	//cl_mem heap;
-	//void **heap_svm_ptr;
 	clbpt_leaf_node *leaf;
 	void *root;
 };
