@@ -124,6 +124,7 @@ struct _clbpt_tree {
 
 	clbpt_property property;
 	void *heap;
+	size_t heap_size;
 	clbpt_leaf_node *leaf;
 	void *root;
 };

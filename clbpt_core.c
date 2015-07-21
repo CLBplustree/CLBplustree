@@ -4,8 +4,8 @@
  
 #include "clbpt_core.h"
 #include <stdio.h>
-#include <assert.h>
 #include <stdlib.h>
+#include <assert.h>
 
 // Static Global Variables
 static cl_int err;
@@ -163,12 +163,10 @@ int _clbptInitialize(clbpt_tree tree)
 	cl_kernel		*kernels = tree->platform->kernels;
 	cl_kernel		kernel;
 
-	// Allocate SVM memory
-	size_t heap_size = sizeof(void*) * 2048;
-
-	// Create a buffer object using the SVM memory for KMA
+	// Allocate SVM memory for KMA
 	fprintf(stderr, "kma create START\n");
-	err = kma_create_svm(device, context, queue, program, heap_size, &(tree->heap));
+	tree->heap_size = 2048 * sizeof(void*);
+	err = kma_create_svm(device, context, queue, program, tree->heap_size, &(tree->heap));
 	assert(err == CL_SUCCESS);
 	fprintf(stderr, "kma create SUCCESS\n");
 
@@ -185,14 +183,14 @@ int _clbptInitialize(clbpt_tree tree)
 	root = (void *)tree->leaf;
 
 	// Create node_addr buffer
-	tree->node_addr_buf = (void **)malloc(sizeof(void *) * buf_size);
+	tree->node_addr_buf = (void **)malloc(buf_size * sizeof(void *));
 
 	// Create ins, del pkt buffer
-	ins = (clbpt_ins_pkt *)malloc(sizeof(clbpt_ins_pkt) * buf_size/2);
-	addr = (void **)malloc(sizeof(void *) * buf_size/2);
-	leafmirror_addr = (void **)malloc(sizeof(void *) * buf_size/2);
+	ins = (clbpt_ins_pkt *)malloc(buf_size * sizeof(clbpt_ins_pkt));
+	addr = (void **)malloc(buf_size * sizeof(void *));
+	leafmirror_addr = (void **)malloc(buf_size * sizeof(void *));
 	num_ins = 0;
-	del = (clbpt_del_pkt *)malloc(sizeof(clbpt_del_pkt) * buf_size/2);
+	del = (clbpt_del_pkt *)malloc(buf_size * sizeof(clbpt_del_pkt));
 	num_del = 0;
 
 	// Get CL_DEVICE_MAX_WORK_ITEM_SIZES	
@@ -633,6 +631,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 		leafmirror_addr_d = clCreateBuffer(context, 0, num_ins * sizeof(void *), NULL, &err);
 		assert(err == CL_SUCCESS);
 
+		//<DEBUG>
 		err = clEnqueueReadBuffer(queue, ins_d, CL_TRUE, 0, num_ins * sizeof(clbpt_ins_pkt), ins, 0, NULL, NULL);
 		assert(err == CL_SUCCESS);
 		fprintf(stderr, "insert packets to internal node:\n");
@@ -640,12 +639,14 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 		{
 			fprintf(stderr, "insert %d, target: %p\n", ins[i].entry.key, ins[i].target);
 		}
+		//</DEBUG>
 	}
 	if (num_del > 0)
 	{
 		del_d = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, num_del * sizeof(clbpt_del_pkt), del, &err);
 		assert(err == CL_SUCCESS);
 
+		//<DEBUG>
 		err = clEnqueueReadBuffer(queue, del_d, CL_TRUE, 0, num_del * sizeof(clbpt_del_pkt), del, 0, NULL, NULL);
 		assert(err == CL_SUCCESS);
 		fprintf(stderr, "delete packets to internal node:\n");
@@ -653,6 +654,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 		{
 			fprintf(stderr, "delete %d, target: %p\n", del[i].key, del[i].target);
 		}
+		//</DEBUG>
 	}
 
 	// kernel _clbptWPacketInit

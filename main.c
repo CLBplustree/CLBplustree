@@ -86,8 +86,9 @@ int main()
 	printf("============\n");
 
 	
-	int a[10] = { 10,3,5,6,2,8,11,12,13,1};
-	err = clbptEnqueueInsertions(t, 9, a, NULL);
+	int a[10] = { 10,3,5,6,2,8,11,12,13,1 };
+	int a_rec[10] = { 11,4,6,7,3,9,12,13,14,2 };
+	err = clbptEnqueueInsertions(t, 9, a, a_rec);
 	if (err != CL_SUCCESS)
 	{
 		fprintf(stderr, "EnqueInsertions ERROR\n");
@@ -105,7 +106,8 @@ int main()
 	printf("============\n");
 
 	int b[2] = { 4,11 };
-	err = clbptEnqueueInsertions(t, 2, b, NULL);
+	int b_rec[2] = { 5, 12 };
+	err = clbptEnqueueInsertions(t, 2, b, b_rec);
 	if (err != CL_SUCCESS)
 	{
 		fprintf(stderr, "EnqueDeletions ERROR\n");
@@ -114,7 +116,8 @@ int main()
 	printf("============\n");
 
 	int c[2] = { 1,9 };
-	err = clbptEnqueueInsertions(t, 2, c, NULL);
+	int c_rec[2] = { 2, 10 };
+	err = clbptEnqueueInsertions(t, 2, c, c_rec);
 	if (err != CL_SUCCESS)
 	{
 		fprintf(stderr, "EnqueInsertions ERROR\n");
