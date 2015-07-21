@@ -36,7 +36,7 @@ int handle_node(void *node_addr);
 int handle_leftmost_node(clbpt_leaf_node *node);
 int search_leaf(int32_t key, void *node_addr, void *result_addr);
 int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_addr);
-int insert_leaf(int32_t key, void *node_addr);
+int insert_leaf(int32_t key, void *node_addr, CLBPT_RECORD_TYPE record);
 int delete_leaf(int32_t key, void *node_addr);
 //void print_tree(clbpt_tree tree);
 void print_leaves(clbpt_leaf_node *leaf);	// function for testing
@@ -154,7 +154,7 @@ int _clbptCreateKernels(clbpt_platform platform)
 
 int _clbptInitialize(clbpt_tree tree)
 {
-	clbpt_int_node	*root = tree->root;	///// NEED TO CHANGE ?
+	clbpt_int_node	*root = tree->root;
 	clbpt_property	property = tree->property;
 	cl_device_id	device = tree->platform->devices[0];
 	cl_context		context = tree->platform->context;
@@ -573,7 +573,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 		if (isSearchPacket(pkt))
 		{
 			//<DEBUG>
-			fprintf(stderr, "search goes to node with head = %d\n", *(int32_t *)(((clbpt_leaf_node *)node_addr)->head->record_ptr));
+			fprintf(stderr, "search goes to node with head = %d\n", ((clbpt_leaf_node *)node_addr)->head->key);
 			//</DEBUG>
 			instr_result[i] = search_leaf(key, node_addr, tree->execute_result_buf[i]);
 		}
@@ -588,9 +588,9 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 			fprintf(stderr, "insert key = %d\n", key);
 			//int temp = *((int32_t *)((clbpt_leaf_node *)node_addr)->head->record_ptr);
 			if (((clbpt_leaf_node *)node_addr)->head != NULL)
-				fprintf(stderr, "insert to node with head = %d\n", *(int32_t *)(((clbpt_leaf_node *)node_addr)->head->record_ptr));
+				fprintf(stderr, "insert to node with head = %d\n", ((clbpt_leaf_node *)node_addr)->head->key);
 			//</DEBUG>
-			instr_result[i] = insert_leaf(key, node_addr);
+			instr_result[i] = insert_leaf(key, node_addr, (CLBPT_RECORD_TYPE)tree->execute_result_buf[i]);
 			//<DEBUG>
 			fprintf(stderr, "After insert\n");
 			print_leaves(tree->leaf);
@@ -772,7 +772,7 @@ int handle_node(void *node_addr)
 		node_sibling->prev_node = node;
 		node_sibling->next_node = node->next_node;
 		node_sibling->mirror = node->mirror;
-		node_sibling->parent_key = *((int32_t *)entry_head->record_ptr);
+		node_sibling->parent_key = entry_head->key;
 		node->next_node = node_sibling;
 
 		// After splitting, insert parent_key to internal node
@@ -782,7 +782,7 @@ int handle_node(void *node_addr)
 		ins[num_ins].target = node->mirror;
 		ins[num_ins].entry = entry_d;
 		addr[num_ins] = (void *)node_sibling;
-		fprintf(stderr, "insert to internal with head = %d\n", *((int32_t *)node_sibling->head->record_ptr));
+		fprintf(stderr, "insert to internal with head = %d\n", node_sibling->head->key);
 		num_ins++;
 	}
 	else if (node->num_entry < half_f(order))	// Need Borrow or Merge
@@ -819,7 +819,7 @@ int handle_node(void *node_addr)
 			{
 				node_sibling = node->prev_node;
 
-				fprintf(stderr, "node with head %d\n", *(int32_t *)node->head->record_ptr);
+				fprintf(stderr, "node with head %d\n", node->head->key);
 
 				// Delete old parent_key to internal node
 				del[num_del].target = node->mirror;
@@ -838,7 +838,7 @@ int handle_node(void *node_addr)
 				entry_head->next = node->head;
 
 				node->head = entry_head;	// Update head of the node
-				node->parent_key = *((int32_t *)entry_head->record_ptr);
+				node->parent_key = entry_head->key);
 
 				// Insert new parent_key to internal node
 				clbpt_entry entry_d;
@@ -896,7 +896,8 @@ int handle_leftmost_node(clbpt_leaf_node *node)
 		{
 			node_sibling = node->next_node;
 			entry_head = node_sibling->head;
-			if (*((int32_t *)entry_head->record_ptr) == node_sibling->parent_key)
+			//if (*((int32_t *)entry_head->record_ptr) == node_sibling->parent_key)
+			if (entry_head->key == node_sibling->parent_key)
 			{
 				parent_key_update = 1;
 
@@ -918,7 +919,7 @@ int handle_leftmost_node(clbpt_leaf_node *node)
 			node_sibling->head = entry_head;
 			if (parent_key_update)
 			{
-				node_sibling->parent_key = *((int32_t *)entry_head->record_ptr);
+				node_sibling->parent_key = entry_head->key);
 
 				// Insert new parent_key to internal node
 				clbpt_entry entry_d;
@@ -949,13 +950,15 @@ int search_leaf(int32_t key, void *node_addr, void *result_addr)
 	// Scan through entries
 	while(entry->next != NULL)
 	{
-		if (*((int32_t *)entry->next->record_ptr) == key)
+		//if (*((int32_t *)entry->next->record_ptr) == key)
+		if (entry->next->key == key)
 		{
 			existed = 1;
 			result_addr = entry->next->record_ptr;
 			break;
 		}
-		if (*((int32_t *)entry->next->record_ptr) > key)
+		//if (*((int32_t *)entry->next->record_ptr) > key)
+		if (entry->next->key > key)
 		{
 			result_addr = NULL;
 			break;
@@ -967,12 +970,12 @@ int search_leaf(int32_t key, void *node_addr, void *result_addr)
 
 	if (existed)
 	{
-		fprintf(stderr, "FOUND: record: %d is in the B+ Tree\n", key);
+		fprintf(stderr, "FOUND: (key: %d, record: %d) is in the B+ Tree\n", key, *((CLBPT_RECORD_TYPE *)result_addr));
 		num_records_found = 1;
 	}
 	else
 	{
-		fprintf(stderr, "NOT FOUND: record: %d is NOT in the B+ Tree\n", key);
+		fprintf(stderr, "NOT FOUND: key: %d is NOT in the B+ Tree\n", key);
 		num_records_found = 0;
 	}
 
@@ -986,9 +989,11 @@ int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_add
 	clbpt_leaf_entry *start = NULL, *end = NULL, *entry = node->head;
 
 	// find start
-	while(entry != NULL && *((int32_t *)entry->record_ptr) <= key_upper)
+	//while(entry != NULL && *((int32_t *)entry->record_ptr) <= key_upper)
+	while(entry != NULL && entry->key <= key_upper)
 	{
-		if (*((int32_t *)entry->record_ptr) >= key)
+		//if (*((int32_t *)entry->record_ptr) >= key)
+		if (entry->key >= key)
 		{
 			start = entry;
 			num_records += 1;
@@ -1000,7 +1005,8 @@ int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_add
 	if (entry != NULL)
 	{
 		while(entry->next != NULL &&
-			*((int32_t *)entry->next->record_ptr) <= key_upper)
+			entry->next->key <= key_upper)
+			//*((int32_t *)entry->next->record_ptr) <= key_upper)
 		{
 			num_records += 1;
 			entry = entry->next;
@@ -1012,24 +1018,25 @@ int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_add
 	{
 		result_addr = (void *)malloc(sizeof(void *) * (num_records+1));
 		((int *)result_addr)[0] = num_records;
-		fprintf(stderr, "RANGE FOUND: records: \n");
+		fprintf(stderr, "RANGE FOUND:\n");
 		for(entry = start, i = num_records, j = 1; i > 0; entry = entry->next, i--, j++)
 		{
 			((void **)result_addr)[j] = entry->record_ptr;
-			fprintf(stderr, "%d\n", *((CLBPT_RECORD_TYPE *)entry->record_ptr));
+			fprintf(stderr, "\t(key: %d, record: %d)\n", entry->key, *((CLBPT_RECORD_TYPE)entry->record_ptr));
+			//fprintf(stderr, "%d\n", *((CLBPT_RECORD_TYPE *)entry->record_ptr));
 		}
-		fprintf(stderr, "are inside the range[%d, %d]\n", *((CLBPT_RECORD_TYPE *)start->record_ptr), *((CLBPT_RECORD_TYPE *)end->record_ptr));
+		fprintf(stderr, "are inside the range[%d, %d]\n", start->key, end->key);
 	}
 	else
 	{
 		result_addr = NULL;
-		fprintf(stderr, "RANGE NOT FOUND: nothing is inside the range[%d, %d]\n", *((CLBPT_RECORD_TYPE *)start->record_ptr), *((CLBPT_RECORD_TYPE *)end->record_ptr));
+		fprintf(stderr, "RANGE NOT FOUND: nothing is inside the range[%d, %d]\n", start->key, end->key);
 	}
 
 	return num_records;
 }
 
-int insert_leaf(int32_t key, void *node_addr)
+int insert_leaf(int32_t key, void *node_addr, CLBPT_RECORD_TYPE record)
 {
 	int existed = 0;
 	clbpt_leaf_node *node;
@@ -1043,12 +1050,14 @@ int insert_leaf(int32_t key, void *node_addr)
 	// Scan through entries
 	while(entry->next != NULL)
 	{
-		if (*((int32_t *)entry->next->record_ptr) == key)
+		//if (*((int32_t *)entry->next->record_ptr) == key)
+		if (entry->next->key == key)
 		{
 			existed = 1;
 			break;
 		}
-		if (*((int32_t *)entry->next->record_ptr) > key)
+		//if (*((int32_t *)entry->next->record_ptr) > key)
+		if (entry->next->key > key)
 		{
 			break;
 		}
@@ -1059,8 +1068,10 @@ int insert_leaf(int32_t key, void *node_addr)
 	{
 		entry_temp = entry->next;
 		entry->next = (clbpt_leaf_entry *)malloc(sizeof(clbpt_leaf_entry));
+		entry->next->key = key;
 		entry->next->record_ptr = (CLBPT_RECORD_TYPE *)malloc(sizeof(CLBPT_RECORD_TYPE));
-		*((int32_t *)entry->next->record_ptr) = key;
+		//*((int32_t *)entry->next->record_ptr) = key;	///// NEED CHANGE
+		*((CLBPT_RECORD_TYPE *)entry->next->record_ptr = record;
 		entry->next->next = entry_temp;
 		if (entry_temp == node->head)
 		{
@@ -1070,7 +1081,7 @@ int insert_leaf(int32_t key, void *node_addr)
 	}
 	else	// No Insert
 	{
-		fprintf(stderr, "INSERT FAILED: record: %d is already in the B+ Tree\n", key);
+		fprintf(stderr, "INSERT FAILED: key: %d is already in the B+ Tree\n", key);
 	}
 
 	free(entry_free);
@@ -1091,12 +1102,14 @@ int delete_leaf(int32_t key, void *node_addr)
 	// Scan through entries
 	while(entry->next != NULL)
 	{
-		if (*((int32_t *)entry->next->record_ptr) == key)
+		//if (*((int32_t *)entry->next->record_ptr) == key)
+		if (entry->next->key == key)
 		{
 			existed = 1;
 			break;
 		}
-		if (*((int32_t *)entry->next->record_ptr) > key)
+		//if (*((int32_t *)entry->next->record_ptr) > key)
+		if (entry->next->key > key)
 		{
 			break;
 		}
@@ -1111,6 +1124,7 @@ int delete_leaf(int32_t key, void *node_addr)
 		{
 			node->head = entry->next;
 		}
+		entry_temp->key = 0;
 		free(entry_temp->record_ptr);
 		entry_temp->next = NULL;
 		free(entry_temp);
@@ -1119,7 +1133,7 @@ int delete_leaf(int32_t key, void *node_addr)
 	}
 	else	// Nothing to Delete
 	{
-		fprintf(stderr, "DELETE FAILED: record: %d was not in the B+ Tree\n", key);
+		fprintf(stderr, "DELETE FAILED: key: %d was not in the B+ Tree\n", key);
 	}
 
 	free(entry_free);
@@ -1167,7 +1181,7 @@ void _clbptPrintLeaf(int level, clbpt_leaf_node *leaf)	// function for testing
 	entry = leaf->head;
 	while (count-- > 0)
 	{
-		fprintf(stderr, "|%d", *((int *)entry->record_ptr));
+		fprintf(stderr, "|(key: %d, rec: %d)", entry->key, *((CLBPT_RECORD_TYPE)entry->record_ptr));
 		entry = entry->next;
 	}
 	fprintf(stderr, "|   ");
@@ -1261,7 +1275,7 @@ void print_leaves(clbpt_leaf_node *leaf)	// function for testing
 		for(count = temp->next_node->num_entry, entry = temp->next_node->head;
 			count > 0; count--)
 		{
-			fprintf(stderr, "|%d", *((int *)entry->record_ptr));
+			fprintf(stderr, "|(key: %d, rec: %d)", entry->key, *((CLBPT_RECORD_TYPE)entry->record_ptr));
 			entry = entry->next;
 		}
 		
