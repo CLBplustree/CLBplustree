@@ -81,7 +81,7 @@ int clbptEnqueueRangeSearches(clbpt_tree tree, int num_keys, CLBPT_KEY_TYPE *l_k
  * @param records An array of records with size of num_inserts.
  * @return Error code.
  */
-int clbptEnqueueInsertions(clbpt_tree tree, int num_inserts, CLBPT_KEY_TYPE *keys, void *records);
+int clbptEnqueueInsertions(clbpt_tree tree, int num_inserts, CLBPT_KEY_TYPE *keys, void **records);
 
 /**
  * @brief Enqueue multiple deletions instruction.

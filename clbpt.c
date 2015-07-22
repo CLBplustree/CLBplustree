@@ -238,7 +238,7 @@ int clbptEnqueueInsertions(
 	clbpt_tree tree,
 	int num_inserts,
 	CLBPT_KEY_TYPE *keys,
-	void *records)
+	void **records)
 {
 	int i, err;
 	for (i = 0; i < num_inserts; i++)
@@ -246,7 +246,7 @@ int clbptEnqueueInsertions(
 		err = clbptEnqueueFecthBuffer(
 			tree,
 			CLBPT_PACKET_INSERT(keys[i], 1),
-			records);
+			records[i]);
 		if (err != CLBPT_SUCCESS) return err;
 	}
 	return CLBPT_SUCCESS;

@@ -400,6 +400,16 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 	fprintf(stderr, "size = %d\n", i);
 	fprintf(stderr, "\n");
 	*/
+	fprintf(stderr, "After sort\n");
+	fprintf(stderr, "_Execute_result_buf_\n");
+	for (i = 0; i < buf_size; i++) {
+		if (tree->execute_result_buf[i] == NULL)
+			fprintf(stderr, "NULL\n");
+		else
+			fprintf(stderr, "%d\n", *((CLBPT_KEY_TYPE *)tree->execute_result_buf[i]));
+	}
+	fprintf(stderr, "size = %d\n", i);
+	fprintf(stderr, "\n");
 
 	return isEmpty;
 }
@@ -840,7 +850,7 @@ int handle_node(void *node_addr)
 				entry_head->next = node->head;
 
 				node->head = entry_head;	// Update head of the node
-				node->parent_key = entry_head->key);
+				node->parent_key = entry_head->key;
 
 				// Insert new parent_key to internal node
 				clbpt_entry entry_d;
@@ -921,7 +931,7 @@ int handle_leftmost_node(clbpt_leaf_node *node)
 			node_sibling->head = entry_head;
 			if (parent_key_update)
 			{
-				node_sibling->parent_key = entry_head->key);
+				node_sibling->parent_key = entry_head->key;
 
 				// Insert new parent_key to internal node
 				clbpt_entry entry_d;
@@ -1024,7 +1034,7 @@ int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_add
 		for(entry = start, i = num_records, j = 1; i > 0; entry = entry->next, i--, j++)
 		{
 			((void **)result_addr)[j] = entry->record_ptr;
-			fprintf(stderr, "\t(key: %d, record: %d)\n", entry->key, *((CLBPT_RECORD_TYPE)entry->record_ptr));
+			fprintf(stderr, "\t(key: %d, record: %d)\n", entry->key, *((CLBPT_RECORD_TYPE *)entry->record_ptr));
 			//fprintf(stderr, "%d\n", *((CLBPT_RECORD_TYPE *)entry->record_ptr));
 		}
 		fprintf(stderr, "are inside the range[%d, %d]\n", start->key, end->key);
@@ -1073,7 +1083,7 @@ int insert_leaf(int32_t key, void *node_addr, CLBPT_RECORD_TYPE record)
 		entry->next->key = key;
 		entry->next->record_ptr = (CLBPT_RECORD_TYPE *)malloc(sizeof(CLBPT_RECORD_TYPE));
 		//*((int32_t *)entry->next->record_ptr) = key;	///// NEED CHANGE
-		*((CLBPT_RECORD_TYPE *)entry->next->record_ptr = record;
+		*((CLBPT_RECORD_TYPE *)entry->next->record_ptr) = record;
 		entry->next->next = entry_temp;
 		if (entry_temp == node->head)
 		{
@@ -1183,7 +1193,7 @@ void _clbptPrintLeaf(int level, clbpt_leaf_node *leaf)	// function for testing
 	entry = leaf->head;
 	while (count-- > 0)
 	{
-		fprintf(stderr, "|(key: %d, rec: %d)", entry->key, *((CLBPT_RECORD_TYPE)entry->record_ptr));
+		fprintf(stderr, "|(key: %d, rec: %d)", entry->key, *((CLBPT_RECORD_TYPE *)entry->record_ptr));
 		entry = entry->next;
 	}
 	fprintf(stderr, "|   ");
@@ -1277,7 +1287,7 @@ void print_leaves(clbpt_leaf_node *leaf)	// function for testing
 		for(count = temp->next_node->num_entry, entry = temp->next_node->head;
 			count > 0; count--)
 		{
-			fprintf(stderr, "|(key: %d, rec: %d)", entry->key, *((CLBPT_RECORD_TYPE)entry->record_ptr));
+			fprintf(stderr, "|(key: %d, rec: %d)", entry->key, *((CLBPT_RECORD_TYPE *)entry->record_ptr));
 			entry = entry->next;
 		}
 		
