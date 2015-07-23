@@ -18,8 +18,6 @@ int main()
 	cl_platform_id platform_id = NULL;
 	cl_device_id device_id = NULL;
 	cl_context context = NULL;
-	//cl_command_queue command_queue = NULL, queue_device;
-	//const cl_queue_properties queue_device_prop[] = {CL_QUEUE_PROPERTIES, (cl_command_queue_properties)(CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE | CL_QUEUE_ON_DEVICE | CL_QUEUE_ON_DEVICE_DEFAULT), 0};
 	cl_program program = NULL;
 	cl_kernel kernel = NULL;
 	cl_uint ret_num_devices;
@@ -64,18 +62,16 @@ int main()
 	context = clCreateContext( NULL, 1, &device_id, NULL, NULL, &err );
 	err_check( err, "clCreateContext" );
 
-	//queue_device = clCreateCommandQueueWithProperties(context, device_id, queue_device_prop, &err);
- 
 	printf("data information about devices are: %d\n", (int)arr[0]);
 
 	p = malloc(sizeof(struct _clbpt_platform));
 	clbptCreatePlatform(&p, context);
 	fprintf(stderr, "CreatePlatform SUCCESS\n");
-	//cl_kernel kern = p->kernels[0];
-	clbptCreateTree(&t, p, 256, 64);
+	clbptCreateTree(&t, p, 256, sizeof(int));
 	fprintf(stderr, "CreateTree SUCCESS\n");
 	
 	int d[10] = { 7,21,24,23,14,15,16,17,18,19 };
+	int d_rec[10] = { 8,22,25,24,15,16,17,18,19,20 };
 	err = clbptEnqueueInsertions(t, 1, d, NULL);
 	if (err != CL_SUCCESS)
 	{

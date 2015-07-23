@@ -102,31 +102,42 @@ typedef struct _clbpt_platform *clbpt_platform;
  
 struct _clbpt_tree {
 	clbpt_platform platform;
-	pthread_t handler;
-	pthread_mutex_t buffer_mutex;
-	pthread_mutex_t loop_mutex;
 
+	// Buffers
 	int buf_status;
 	int fetch_buf_index;
 	int wait_buf_index;
-	clbpt_packet *fetch_buf;
-	clbpt_packet *wait_buf;
-	clbpt_packet *execute_buf;
+	clbpt_packet *fetch_buf;	// Store the fetched in packets
+	clbpt_packet *wait_buf;		// Swap the fetching buffer in and wait
+	clbpt_packet *execute_buf;	// Select packets from waiting buffer and sort
 	void **result_buf;
 	void **execute_result_buf;
 	void **node_addr_buf;
 
+	// Threads
+	pthread_t handler;
+	pthread_mutex_t buffer_mutex;
+	pthread_mutex_t loop_mutex;
 	int close_thread;
 	int is_Complete;
 
+	// Tree info
 	int degree;
+	clbpt_property *property;	// root, level
+	clbpt_leaf_node *leaf;
 	size_t record_size;
 
-	clbpt_property property;
-	void *heap;
+	// Device side variables
+	cl_mem wait_buf_d;
+	cl_mem execute_buf_d;
+	cl_mem result_buf_d;
+	cl_mem execute_buf_d_temp;	// For _clbptPacketSort only
+	cl_mem result_buf_d_temp;	// For _clbptPacketSort only
+
+	cl_mem property_d;
+
+	void *heap;					// For internal node, allocate SVM for KMA
 	size_t heap_size;
-	clbpt_leaf_node *leaf;
-	void *root;
 };
 
 typedef struct _clbpt_tree *clbpt_tree;
