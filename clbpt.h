@@ -23,11 +23,11 @@ int clbptCreatePlatform(clbpt_platform *dst_platform_ptr, cl_context context);
  * @brief Create a new CLBPT.
  * @param dst_tree The B+tree.
  * @param platform CLBPT platform.
- * @param degree The degree of the B+tree. 0 for maximum available degree.
+ * @param order The order of the B+tree. 0 for maximum available order.
  * @param record_size The size of record in byte.
  * @return Error code.
  */
-int clbptCreateTree(clbpt_tree *dst_tree_ptr, clbpt_platform platform, const int degree, const size_t record_size);
+int clbptCreateTree(clbpt_tree *dst_tree_ptr, clbpt_platform platform, const int order, const size_t record_size);
 
 /**
  * @brief Release clbpt_tree.
