@@ -113,6 +113,7 @@ struct _clbpt_tree {
 	void **result_buf;
 	void **execute_result_buf;
 	void **node_addr_buf;
+	uint32_t buf_size;
 
 	// Threads
 	pthread_t handler;
@@ -122,7 +123,7 @@ struct _clbpt_tree {
 	int is_Complete;
 
 	// Tree info
-	int degree;
+	int order;
 	clbpt_property *property;	// root, level
 	clbpt_leaf_node *leaf;
 	size_t record_size;
