@@ -228,7 +228,7 @@ int clbptEnqueueRangeSearches(
 		err = clbptEnqueueFecthBuffer(
 			tree,
 			CLBPT_PACKET_RANGE(l_keys[i], u_keys[i]),
-			(void *)record_list);
+			record_list[i]);
 		if (err != CLBPT_SUCCESS) return err;
 	}
 	return CLBPT_SUCCESS;
