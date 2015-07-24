@@ -7,14 +7,6 @@
 #include <stdlib.h>
 #include <assert.h>
 
-// Static Global Variables
-static cl_int err;
-static size_t cb;
-
-static cl_mem wait_buf_d, execute_buf_d, result_buf_d;
-static cl_mem execute_buf_d_temp, result_buf_d_temp;
-
-static cl_mem property_d;
 
 // Insert and Delete Packet (to internal node)
 static clbpt_ins_pkt *ins;
@@ -25,31 +17,31 @@ static void **addr;
 static void **leafmirror_addr;
 
 // Size and Order
-static size_t global_work_size;
-static size_t local_work_size;
 static size_t max_local_work_size;		// get this value in _clbptInitialize
-static uint32_t order  = CLBPT_ORDER;	// get this value in _clbptInitialize
-static uint32_t buf_size = CLBPT_BUF_SIZE;
+static uint32_t order = CLBPT_ORDER;	// get this value in _clbptInitialize
 
 
 int handle_node(void *node_addr);
 int handle_leftmost_node(clbpt_leaf_node *node);
 int search_leaf(int32_t key, void *node_addr, void *result_addr);
 int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_addr);
-int insert_leaf(int32_t key, void *node_addr, CLBPT_RECORD_TYPE record);
+int insert_leaf(int32_t key, void *node_addr, CLBPT_RECORD_TYPE record, size_t record_size);
 int delete_leaf(int32_t key, void *node_addr);
-//void print_tree(clbpt_tree tree);
-void print_leaves(clbpt_leaf_node *leaf);	// function for testing
+
+void show_pkt_buf(clbpt_packet *pkt_buf, uint32_t buf_size);	// function for testing
+void show_leaves(clbpt_leaf_node *leaf);						// function for testing
 void _clbptPrintTree(clbpt_property *property);
+//void show_tree(clbpt_tree tree);
 
 int _clbptGetDevices(clbpt_platform platform)
 {
+	int i;
+	size_t cb;
 	cl_uint num_devices;
 	cl_context context = platform->context;
 	cl_device_id *devices;
 	char *devName;
 	char *devVer;
-	int i;
 
 	// Get a list of devices
 	clGetContextInfo(context, CL_CONTEXT_DEVICES, 0, NULL, &cb);
@@ -69,7 +61,7 @@ int _clbptGetDevices(clbpt_platform platform)
 	{
 		// get device name
 		clGetDeviceInfo(devices[i], CL_DEVICE_NAME, 0, NULL, &cb);
-		devName = (char*)malloc(sizeof(char) * cb);
+		devName = (char*)malloc(cb * sizeof(char));
 		clGetDeviceInfo(devices[i], CL_DEVICE_NAME, cb, &devName[0], NULL);
 		devName[cb] = 0;
 		fprintf(stderr, "Device: %s", devName);
@@ -77,7 +69,7 @@ int _clbptGetDevices(clbpt_platform platform)
 		
 		// get device supports version
 		clGetDeviceInfo(devices[i], CL_DEVICE_VERSION, 0, NULL, &cb);
-		devVer = (char*)malloc(sizeof(char) * cb);
+		devVer = (char*)malloc(cb * sizeof(char));
 		clGetDeviceInfo(devices[i], CL_DEVICE_VERSION, cb, &devVer[0], NULL);
 		devVer[cb] = 0;
 		fprintf(stderr, " (supports %s)\n", devVer);
@@ -90,6 +82,8 @@ int _clbptGetDevices(clbpt_platform platform)
 
 int _clbptCreateQueues(clbpt_platform platform)
 {
+	cl_int err;
+
 	cl_queue_properties queue_device_prop[] = {
 		CL_QUEUE_PROPERTIES,
 		(cl_command_queue_properties)(CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE | CL_QUEUE_ON_DEVICE | CL_QUEUE_ON_DEVICE_DEFAULT),
@@ -125,7 +119,8 @@ int _clbptCreateQueues(clbpt_platform platform)
 int _clbptCreateKernels(clbpt_platform platform)
 {
 	int i;
-	cl_kernel *kernels = (cl_kernel *)malloc(sizeof(cl_kernel) * NUM_KERNELS);
+	cl_int err;
+	cl_kernel *kernels = (cl_kernel *)malloc(NUM_KERNELS * sizeof(cl_kernel));
 	char kernels_name[NUM_KERNELS][35] = {
 		"_clbptPacketSelect",
 		"_clbptPacketSort",
@@ -154,8 +149,8 @@ int _clbptCreateKernels(clbpt_platform platform)
 
 int _clbptInitialize(clbpt_tree tree)
 {
-	clbpt_int_node	*root = tree->root;
-	clbpt_property	property = tree->property;
+	size_t cb;
+	cl_int err;
 	cl_device_id	device = tree->platform->devices[0];
 	cl_context		context = tree->platform->context;
 	cl_command_queue queue = tree->platform->queue;
@@ -163,12 +158,18 @@ int _clbptInitialize(clbpt_tree tree)
 	cl_kernel		*kernels = tree->platform->kernels;
 	cl_kernel		kernel;
 
+	size_t global_work_size;
+	size_t local_work_size;
+
 	// Allocate SVM memory for KMA
 	fprintf(stderr, "kma create START\n");
 	tree->heap_size = 2048 * sizeof(void*);
 	err = kma_create_svm(device, context, queue, program, tree->heap_size, &(tree->heap));
 	assert(err == CL_SUCCESS);
 	fprintf(stderr, "kma create SUCCESS\n");
+
+	// Assign buf_size
+	tree->buf_size = CLBPT_BUF_SIZE;
 
 	// Create leaf node
 	tree->leaf = (clbpt_leaf_node *)malloc(sizeof(clbpt_leaf_node));
@@ -179,18 +180,19 @@ int _clbptInitialize(clbpt_tree tree)
 	tree->leaf->mirror = NULL;
 	tree->leaf->parent_key = 0;
 
-	// Initialize root
-	root = (void *)tree->leaf;
+	// Create property
+	tree->property = (clbpt_property *)malloc(sizeof(clbpt_property));
+	tree->property->root = (void *)tree->leaf;
 
 	// Create node_addr buffer
-	tree->node_addr_buf = (void **)malloc(buf_size * sizeof(void *));
+	tree->node_addr_buf = (void **)malloc(tree->buf_size * sizeof(void *));
 
 	// Create ins, del pkt buffer
-	ins = (clbpt_ins_pkt *)malloc(buf_size * sizeof(clbpt_ins_pkt));
-	addr = (void **)malloc(buf_size * sizeof(void *));
-	leafmirror_addr = (void **)malloc(buf_size * sizeof(void *));
+	ins = (clbpt_ins_pkt *)malloc(tree->buf_size * sizeof(clbpt_ins_pkt));
+	addr = (void **)malloc(tree->buf_size * sizeof(void *));
+	leafmirror_addr = (void **)malloc(tree->buf_size * sizeof(void *));
 	num_ins = 0;
-	del = (clbpt_del_pkt *)malloc(buf_size * sizeof(clbpt_del_pkt));
+	del = (clbpt_del_pkt *)malloc(tree->buf_size * sizeof(clbpt_del_pkt));
 	num_del = 0;
 
 	// Get CL_DEVICE_MAX_WORK_ITEM_SIZES	
@@ -206,16 +208,25 @@ int _clbptInitialize(clbpt_tree tree)
 	order = 4;
 	fprintf(stderr, "Tree Order = %d\n", order);
 
-	// clmem initialize
-
 	// clmem allocation
-	property_d = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, sizeof(clbpt_property), &tree->property, &err);
+	tree->wait_buf_d = clCreateBuffer(context, 0, tree->buf_size * sizeof(clbpt_packet), NULL, &err);
+	assert(err == CL_SUCCESS);
+	tree->execute_buf_d = clCreateBuffer(context, 0, tree->buf_size * sizeof(clbpt_packet), NULL, &err);
+	assert(err == CL_SUCCESS);
+	tree->result_buf_d = clCreateBuffer(context, 0, tree->buf_size * sizeof(void *), NULL, &err);
+	assert(err == CL_SUCCESS);
+	tree->execute_buf_d_temp = clCreateBuffer(context, 0, tree->buf_size * sizeof(clbpt_packet), NULL, &err);
+	assert(err == CL_SUCCESS);
+	tree->result_buf_d_temp = clCreateBuffer(context, 0, tree->buf_size * sizeof(void *), NULL, &err);
+	assert(err == CL_SUCCESS);
+	tree->property_d = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, sizeof(clbpt_property), tree->property, &err);
+	assert(err == CL_SUCCESS);
 
 	// kernel _clbptInitialize
 	kernel = kernels[CLBPT_INITIALIZE];
-	err = clSetKernelArg(kernel, 0, sizeof(root), (void *)&root);
+	err = clSetKernelArg(kernel, 0, sizeof(tree->property->root), (void *)&tree->property->root);
 	assert(err == CL_SUCCESS);
-	err = clSetKernelArg(kernel, 1, sizeof(property_d), (void *)&property_d);
+	err = clSetKernelArg(kernel, 1, sizeof(tree->property_d), (void *)&tree->property_d);
 	assert(err == CL_SUCCESS);
 	err = clSetKernelArgSVMPointer(kernel, 2, tree->heap);
 	//err = clSetKernelArg(kernel, 2, sizeof(tree->heap), (void *)&(tree->heap));
@@ -225,10 +236,10 @@ int _clbptInitialize(clbpt_tree tree)
 	global_work_size = local_work_size = 1;
 	err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
 	assert(err == CL_SUCCESS);
-	err = clEnqueueReadBuffer(queue, property_d, CL_TRUE, 0, sizeof(clbpt_property), &(tree->property), 0, NULL, NULL);
+	err = clEnqueueReadBuffer(queue, tree->property_d, CL_TRUE, 0, sizeof(clbpt_property), tree->property, 0, NULL, NULL);
 	assert(err == CL_SUCCESS);
 
-	tree->leaf->mirror = (clbpt_leafmirror *)tree->property.root;
+	tree->leaf->mirror = (clbpt_leafmirror *)tree->property->root;
 
 	return CL_SUCCESS;
 }
@@ -236,15 +247,19 @@ int _clbptInitialize(clbpt_tree tree)
 int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 {
 	int i;
-	unsigned int isEmpty = 1;
+	uint8_t isEmpty = 1;
 
+	size_t global_work_size;
+	size_t local_work_size;
+
+	cl_int err;
 	cl_context		context = tree->platform->context;
 	cl_command_queue queue = tree->platform->queue;
 	cl_kernel		*kernels = tree->platform->kernels;
 	cl_kernel		kernel;
 
 	// Fill end of wait_buf with NOPs
-	for(i = tree->wait_buf_index; i < buf_size; i++)
+	for(i = tree->wait_buf_index; i < tree->buf_size; i++)
 	{
 		tree->wait_buf[i] = PACKET_NOP;
 	}
@@ -253,74 +268,42 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 	cl_mem isEmpty_d;
 
 	// clmem allocation
-	wait_buf_d = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, buf_size * sizeof(clbpt_packet), tree->wait_buf, &err);
-	assert(err == CL_SUCCESS);
-	execute_buf_d = clCreateBuffer(context, 0, buf_size * sizeof(clbpt_packet), NULL, &err);
-	assert(err == CL_SUCCESS);
-	result_buf_d = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, buf_size * sizeof(void *), (void *)tree->result_buf, &err);
-	assert(err == CL_SUCCESS);
-	execute_buf_d_temp = clCreateBuffer(context, 0, buf_size * sizeof(clbpt_packet), NULL, &err);
-	assert(err == CL_SUCCESS);
-	result_buf_d_temp = clCreateBuffer(context, 0, buf_size * sizeof(void *), NULL, &err);
-	assert(err == CL_SUCCESS);
 	isEmpty_d = clCreateBuffer(context, 0, sizeof(uint8_t), NULL, &err);
+	assert(err == CL_SUCCESS);
+
+	err = clEnqueueWriteBuffer(queue, wait_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(clbpt_packet), tree->wait_buf, 0, NULL, NULL);
+	assert(err == CL_SUCCESS);
+	err = clEnqueueWriteBuffer(queue, result_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(void *), tree->result_buf, 0, NULL, NULL);
 	assert(err == CL_SUCCESS);
 
 	// kernel _clbptPacketSelect
 	kernel = kernels[CLBPT_PACKET_SELECT];
 	err = clSetKernelArg(kernel, 0, sizeof(isEmpty_d), (void *)&isEmpty_d);
 	assert(err == CL_SUCCESS);
-	err = clSetKernelArg(kernel, 1, sizeof(wait_buf_d), (void *)&wait_buf_d);
+	err = clSetKernelArg(kernel, 1, sizeof(tree->wait_buf_d), (void *)&tree->wait_buf_d);
 	assert(err == CL_SUCCESS);
-	err = clSetKernelArg(kernel, 2, sizeof(execute_buf_d), (void *)&execute_buf_d);
+	err = clSetKernelArg(kernel, 2, sizeof(tree->execute_buf_d), (void *)&tree->execute_buf_d);
 	assert(err == CL_SUCCESS);
-	err = clSetKernelArg(kernel, 3, sizeof(buf_size), (void *)&buf_size);
+	err = clSetKernelArg(kernel, 3, sizeof(tree->buf_size), (void *)&tree->buf_size);
 	assert(err == CL_SUCCESS);
 
 	// kernel _clbptPacketSort
 	kernel = kernels[CLBPT_PACKET_SORT];
-	err = clSetKernelArg(kernel, 0, sizeof(execute_buf_d), (void *)&execute_buf_d);
+	err = clSetKernelArg(kernel, 0, sizeof(tree->execute_buf_d), (void *)&tree->execute_buf_d);
 	assert(err == CL_SUCCESS);
-	err = clSetKernelArg(kernel, 1, sizeof(result_buf_d), (void *)&result_buf_d);
+	err = clSetKernelArg(kernel, 1, sizeof(tree->result_buf_d), (void *)&tree->result_buf_d);
 	assert(err == CL_SUCCESS);
-	err = clSetKernelArg(kernel, 2, sizeof(execute_buf_d_temp), (void *)&execute_buf_d_temp);
+	err = clSetKernelArg(kernel, 2, sizeof(tree->execute_buf_d_temp), (void *)&tree->execute_buf_d_temp);
 	assert(err == CL_SUCCESS);
-	err = clSetKernelArg(kernel, 3, sizeof(result_buf_d_temp), (void *)&result_buf_d_temp);
+	err = clSetKernelArg(kernel, 3, sizeof(tree->result_buf_d_temp), (void *)&tree->result_buf_d_temp);
 	assert(err == CL_SUCCESS);
-	err = clSetKernelArg(kernel, 4, sizeof(buf_size), (void *)&buf_size);
+	err = clSetKernelArg(kernel, 4, sizeof(tree->buf_size), (void *)&tree->buf_size);
 	assert(err == CL_SUCCESS);
-
-	// <DEBUG>
-	/*
-	fprintf(stderr, "Original\n");
-	fprintf(stderr, "_wait_buf_\n");
-	for (i = 0; i < buf_size; i++) {
-		if (isNopPacket((clbpt_packet)tree->wait_buf[i])) {
-			fprintf(stderr, "NOP\n");
-			fprintf(stderr, "i = %d\n", i);
-		} else if (isSearchPacket((clbpt_packet)tree->wait_buf[i])) {
-			fprintf(stderr, "SEARCH\t%4d \t\t\n", getKeyFromPacket((clbpt_packet)tree->wait_buf[i]));
-			fprintf(stderr, "i = %d\n", i);
-		} else if (isRangePacket((clbpt_packet)tree->wait_buf[i])) {
-			fprintf(stderr, "RANGE\t%4d %4d\t\n", getKeyFromPacket((clbpt_packet)tree->wait_buf[i]), getUpperKeyFromRangePacket((clbpt_packet)tree->wait_buf[i]));
-			fprintf(stderr, "i = %d\n", i);
-		} else if (isInsertPacket((clbpt_packet)tree->wait_buf[i])) {
-			fprintf(stderr, "INSERT\t%4d \t\t\n", getKeyFromPacket((clbpt_packet)tree->wait_buf[i]));
-			fprintf(stderr, "i = %d\n", i);
-		} else if (isDeletePacket((clbpt_packet)tree->wait_buf[i])) {
-			fprintf(stderr, "DELETE\t%4d \t\t\n", getKeyFromPacket((clbpt_packet)tree->wait_buf[i]));
-			fprintf(stderr, "i = %d\n", i);
-		}
-	}
-	fprintf(stderr, "size = %d\n", i);
-	fprintf(stderr, "\n");
-	*/
-	// </DEBUG>
 
 	// PacketSelect
 	kernel = kernels[CLBPT_PACKET_SELECT];
 	isEmpty = 1;
-	global_work_size = buf_size;
+	global_work_size = tree->buf_size;
 	local_work_size = max_local_work_size;
 	err = clEnqueueWriteBuffer(queue, isEmpty_d, CL_TRUE, 0, sizeof(uint8_t), &isEmpty, 0, NULL, NULL);
 	assert(err == CL_SUCCESS);
@@ -328,52 +311,23 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 	assert(err == CL_SUCCESS);
 	err = clEnqueueReadBuffer(queue, isEmpty_d, CL_TRUE, 0, sizeof(uint8_t), &isEmpty, 0, NULL, NULL);
 	assert(err == CL_SUCCESS);
-	err = clEnqueueReadBuffer(queue, wait_buf_d, CL_TRUE, 0, buf_size * sizeof(clbpt_packet), tree->wait_buf, 0, NULL, NULL);
+	err = clEnqueueReadBuffer(queue, tree->wait_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(clbpt_packet), tree->wait_buf, 0, NULL, NULL);
 	assert(err == CL_SUCCESS);
 
 	if (isEmpty)	// Return if the wait_buf is empty
 		return isEmpty;
-
-	// <DEBUG>
-	/*
-	tree->execute_buf = (clbpt_packet *)clEnqueueMapBuffer(queue, execute_buf_d, CL_TRUE, CL_MAP_READ, 0, buf_size * sizeof(clbpt_packet), 0, NULL, NULL, &err);
-	assert(err == CL_SUCCESS);
-
-	
-	fprintf(stderr, "Before sort\n");
-	fprintf(stderr, "_Execute_buf_\n");
-	for (i = 0; i < buf_size; i++) {
-		if (isNopPacket((clbpt_packet)tree->execute_buf[i])) {
-			fprintf(stderr, "NOP\n");
-			fprintf(stderr, "i = %d\n", i);
-		} else if (isSearchPacket((clbpt_packet)tree->execute_buf[i])) {
-			fprintf(stderr, "SEARCH\t%4d \t\t\n", getKeyFromPacket((clbpt_packet)tree->execute_buf[i]));
-			fprintf(stderr, "i = %d\n", i);
-		} else if (isRangePacket((clbpt_packet)tree->execute_buf[i])) {
-			fprintf(stderr, "RANGE\t%4d %4d\t\n", getKeyFromPacket((clbpt_packet)tree->execute_buf[i]), getUpperKeyFromRangePacket((clbpt_packet)tree->execute_buf[i]));
-			fprintf(stderr, "i = %d\n", i);
-		} else if (isInsertPacket((clbpt_packet)tree->execute_buf[i])) {
-			fprintf(stderr, "INSERT\t%4d \t\t\n", getKeyFromPacket((clbpt_packet)tree->execute_buf[i]));
-			fprintf(stderr, "i = %d\n", i);
-		} else if (isDeletePacket((clbpt_packet)tree->execute_buf[i])) {
-			fprintf(stderr, "DELETE\t%4d \t\t\n", getKeyFromPacket((clbpt_packet)tree->execute_buf[i]));
-			fprintf(stderr, "i = %d\n", i);
-		}
-	}
-	fprintf(stderr, "size = %d\n", i);
-	fprintf(stderr, "\n");
-	*/
 
 	// PacketSort
 	kernel = kernels[CLBPT_PACKET_SORT];
 	global_work_size = local_work_size = max_local_work_size;
 	err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
 	assert(err == CL_SUCCESS);
-	err = clEnqueueReadBuffer(queue, execute_buf_d, CL_TRUE, 0, buf_size * sizeof(clbpt_packet),tree->execute_buf, 0, NULL, NULL);
+	err = clEnqueueReadBuffer(queue, tree->execute_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(clbpt_packet), tree->execute_buf, 0, NULL, NULL);
 	assert(err == CL_SUCCESS);
-	err = clEnqueueReadBuffer(queue, result_buf_d, CL_TRUE, 0, buf_size * sizeof(void *), tree->execute_result_buf, 0, NULL, NULL);
+	err = clEnqueueReadBuffer(queue, tree->result_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(void *), tree->execute_result_buf, 0, NULL, NULL);
 	assert(err == CL_SUCCESS);
 
+<<<<<<< HEAD
 	// <DEBUG>
 	/*
 	fprintf(stderr, "After sort\n");
@@ -411,15 +365,21 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 	fprintf(stderr, "size = %d\n", i);
 	fprintf(stderr, "\n");
 
+=======
+>>>>>>> origin/master
 	return isEmpty;
 }
 
 int _clbptHandleExecuteBuffer(clbpt_tree tree)
 {
+	cl_int err;
 	cl_context		context = tree->platform->context;
 	cl_command_queue queue = tree->platform->queue;
 	cl_kernel		*kernels = tree->platform->kernels;
 	cl_kernel		kernel;
+
+	size_t global_work_size;
+	size_t local_work_size;
 
 	// clmem initialize
 
@@ -427,7 +387,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 
 	// Get the number of non-NOP packets in execute buffer
 	int num_packets;
-	for(num_packets = 0; num_packets < buf_size; num_packets++)
+	for(num_packets = 0; num_packets < tree->buf_size; num_packets++)
 	{
 		if (isNopPacket((clbpt_packet)tree->execute_buf[num_packets]))
 			break;
@@ -436,26 +396,26 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 
 	// kernel _clbptSearch
 	kernel = kernels[CLBPT_SEARCH];
-	err = clSetKernelArg(kernel, 0, sizeof(result_buf_d), (void *)&result_buf_d);
+	err = clSetKernelArg(kernel, 0, sizeof(tree->result_buf_d), (void *)&tree->result_buf_d);
 	assert(err == CL_SUCCESS);
-	err = clSetKernelArg(kernel, 1, sizeof(property_d), (void *)&property_d);
+	err = clSetKernelArg(kernel, 1, sizeof(tree->property_d), (void *)&tree->property_d);
 	assert(err == CL_SUCCESS);
-	err = clSetKernelArg(kernel, 2, sizeof(execute_buf_d), (void *)&execute_buf_d);
+	err = clSetKernelArg(kernel, 2, sizeof(tree->execute_buf_d), (void *)&tree->execute_buf_d);
 	assert(err == CL_SUCCESS);
 	err = clSetKernelArg(kernel, 3, sizeof(num_packets), (void *)&num_packets);
 	assert(err == CL_SUCCESS);
 
 	// Search
-	global_work_size = buf_size;
+	global_work_size = tree->buf_size;
 	local_work_size = max_local_work_size;
 	err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
 	assert(err == CL_SUCCESS);
-	err = clEnqueueReadBuffer(queue, result_buf_d, CL_TRUE, 0, buf_size * sizeof(void *), tree->node_addr_buf, 0, NULL, NULL);
+	err = clEnqueueReadBuffer(queue, tree->result_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(void *), tree->node_addr_buf, 0, NULL, NULL);
 	assert(err == CL_SUCCESS);
 
 	// Handle leaf nodes
 	int i, j, k;
-	int *instr_result = (int *)calloc(buf_size, sizeof(int));
+	int *instr_result = (int *)calloc(tree->buf_size, sizeof(int));
 	int node_result = 0;
 	clbpt_packet pkt;
 	int32_t key, key_upper;
@@ -467,7 +427,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	node_addr = tree->node_addr_buf[0];
 
 	// Scan through the execute buffer
-	for(i = 0, j = 0; i < buf_size; i++)
+	for(i = 0, j = 0; i < tree->buf_size; i++)
 	{
 		pkt = tree->execute_buf[i];
 		key = getKeyFromPacket(pkt);
@@ -500,7 +460,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 					tree->wait_buf[j] = tree->execute_buf[k];	// Rollback the insertion packet to wait buffer
 					//<DEBUG>
 					fprintf(stderr, "before delete\n");
-					print_leaves(tree->leaf);
+					show_leaves(tree->leaf);
 					//</DEBUG>
 
 					if (instr_result[k] == 0)	// Delete the entry if the rollback insertion packet did insert
@@ -553,7 +513,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 					tree->wait_buf[j] = tree->execute_buf[k];	// Rollback the insertion packet to wait buffer
 					//<DEBUG>
 					fprintf(stderr, "before delete\n");
-					print_leaves(tree->leaf);
+					show_leaves(tree->leaf);
 					//</DEBUG>
 
 					if (instr_result[k] == 0)	// Delete the entry if the rollback insertion packet did insert
@@ -580,9 +540,6 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 
 		if (isSearchPacket(pkt))
 		{
-			//<DEBUG>
-			fprintf(stderr, "search goes to node with head = %d\n", ((clbpt_leaf_node *)node_addr)->head->key);
-			//</DEBUG>
 			instr_result[i] = search_leaf(key, node_addr, tree->execute_result_buf[i]);
 		}
 		else if (isRangePacket(pkt))
@@ -598,10 +555,10 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 			if (((clbpt_leaf_node *)node_addr)->head != NULL)
 				fprintf(stderr, "insert to node with head = %d\n", ((clbpt_leaf_node *)node_addr)->head->key);
 			//</DEBUG>
-			instr_result[i] = insert_leaf(key, node_addr, (CLBPT_RECORD_TYPE)tree->execute_result_buf[i]);
+			instr_result[i] = insert_leaf(key, node_addr, (CLBPT_RECORD_TYPE)tree->execute_result_buf[i], tree->record_size);
 			//<DEBUG>
 			fprintf(stderr, "After insert\n");
-			print_leaves(tree->leaf);
+			show_leaves(tree->leaf);
 			//</DEBUG>
 		}
 		else if (isDeletePacket(pkt))
@@ -609,14 +566,14 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 			instr_result[i] = delete_leaf(key, node_addr);
 			//<DEBUG>
 			fprintf(stderr, "After delete\n");
-			print_leaves(tree->leaf);
+			show_leaves(tree->leaf);
 			//</DEBUG>
 		}
 	}
 
 	//<DEBUG>
 	fprintf(stderr, "num of pkts in buf = %d\n", i);
-	print_leaves(tree->leaf);
+	show_leaves(tree->leaf);
 	//</DEBUG>
 
 
@@ -684,7 +641,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	err = clSetKernelArgSVMPointer(kernel, 6, tree->heap);
 	//err = clSetKernelArg(kernel, 6, sizeof(tree->heap), (void *)&(tree->heap));
 	assert(err == CL_SUCCESS);
-	err = clSetKernelArg(kernel, 7, sizeof(property_d), (void *)&property_d);
+	err = clSetKernelArg(kernel, 7, sizeof(tree->property_d), (void *)&tree->property_d);
 	assert(err == CL_SUCCESS);
 
 	// WPacketInit
@@ -694,26 +651,23 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	assert(err == CL_SUCCESS);
 
 	fprintf(stderr, "enqueue wpacket init SUCCESS\n");
-	err = clEnqueueReadBuffer(queue, property_d, CL_TRUE, 0, sizeof(clbpt_property), &(tree->property), 0, NULL, NULL);
+	err = clEnqueueReadBuffer(queue, tree->property_d, CL_TRUE, 0, sizeof(clbpt_property), &(tree->property), 0, NULL, NULL);
 
-	// assign leafmirror_addr to node_sibling's parent
+	// Assign leafmirror_addr to node_sibling's parent
 	if (num_ins > 0)
 	{
-		fprintf(stderr, "leafmirror with num_ins = %d\n", num_ins);
 		err = clEnqueueReadBuffer(queue, leafmirror_addr_d, CL_TRUE, 0, num_ins * sizeof(void *), leafmirror_addr, 0, NULL, NULL);
 		assert(err == CL_SUCCESS);
 
 		for(i = 0; i < num_ins; i++)
 		{
 			((clbpt_leaf_node *)addr[i])->mirror = leafmirror_addr[i];
-			fprintf(stderr, "%p ", leafmirror_addr[i]);
 		}
-		fprintf(stderr, "\n");
 	}
 
 	fprintf(stderr, "leafmirror_addr assign SUCCESS\n");
 
-	_clbptPrintTree(&tree->property);
+	_clbptPrintTree(tree->property);
 
 	return CL_SUCCESS;
 }
@@ -724,7 +678,7 @@ int _clbptReleaseLeaf(clbpt_tree tree)
 	clbpt_leaf_node *node;
 	clbpt_leaf_entry *entry;
 
-	// free all entries
+	// Free all entries
 	while(leaf->head != NULL)
 	{
 		entry = leaf->head->next;
@@ -733,7 +687,7 @@ int _clbptReleaseLeaf(clbpt_tree tree)
 		leaf->head = entry;
 	}
 
-	// free all nodes
+	// Free all nodes
 	while(leaf != NULL)
 	{
 		node = leaf->next_node;
@@ -744,7 +698,10 @@ int _clbptReleaseLeaf(clbpt_tree tree)
 		leaf = node;
 	}
 
-	// free ins_pkt, del_pkt, node_addr buffers
+	// Free root
+	free(tree->property);
+
+	// Free ins_pkt, del_pkt, node_addr buffers
 	free(ins);
 	free(del);
 	free(addr);
@@ -1048,7 +1005,7 @@ int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_add
 	return num_records;
 }
 
-int insert_leaf(int32_t key, void *node_addr, CLBPT_RECORD_TYPE record)
+int insert_leaf(int32_t key, void *node_addr, CLBPT_RECORD_TYPE record, size_t record_size)
 {
 	int existed = 0;
 	clbpt_leaf_node *node;
@@ -1081,8 +1038,12 @@ int insert_leaf(int32_t key, void *node_addr, CLBPT_RECORD_TYPE record)
 		entry_temp = entry->next;
 		entry->next = (clbpt_leaf_entry *)malloc(sizeof(clbpt_leaf_entry));
 		entry->next->key = key;
+<<<<<<< HEAD
 		entry->next->record_ptr = (CLBPT_RECORD_TYPE *)malloc(sizeof(CLBPT_RECORD_TYPE));
 		//*((int32_t *)entry->next->record_ptr) = key;	///// NEED CHANGE
+=======
+		entry->next->record_ptr = (CLBPT_RECORD_TYPE *)malloc(record_size);clbpt_property
+>>>>>>> origin/master
 		*((CLBPT_RECORD_TYPE *)entry->next->record_ptr) = record;
 		entry->next->next = entry_temp;
 		if (entry_temp == node->head)
@@ -1159,15 +1120,19 @@ int _clbptDisplayTree(clbpt_tree tree)
 }
 
 /*
-void print_tree(clbpt_tree tree)	// function for testing
+void show_tree(clbpt_tree tree)	// function for testing
 {
+	cl_int err;
 	cl_command_queue queue = tree->platform->queue;
 	cl_kernel		*kernels = tree->platform->kernels;
 	cl_kernel		kernel;
 
+	size_t global_work_size;
+	size_t local_work_size;
+
 	// kernel _clbptPrintTreeKernelWrapper
 	kernel = kernels[CLBPT_PRINT_TREE_KERNEL_WRAPPER];
-	err = clSetKernelArg(kernel, 0, sizeof(property_d), (void *)&property_d);
+	err = clSetKernelArg(kernel, 0, sizeof(tree->property_d), (void *)&tree->property_d);
 	assert(err == CL_SUCCESS);
 	err = clSetKernelArgSVMPointer(kernel, 1, tree->heap);
 	assert(err == CL_SUCCESS);
@@ -1264,8 +1229,43 @@ _clbptPrintTree(
 	fprintf(stderr, "### End of traversal ###\n");
 }
 
+void show_pkt_buf(clbpt_packet *pkt_buf, uint32_t buf_size)
+{
+	int i;
 
-void print_leaves(clbpt_leaf_node *leaf)	// function for testing
+	fprintf(stderr, "===  buf_info  ===\n");
+	for (i = 0; i < buf_size; i++)
+	{
+		if (isNopPacket(pkt_buf[i])
+		{
+			fprintf(stderr, "%d\t", i);
+			fprintf(stderr, "NOP\n");
+		}
+		else if (isSearchPacket(pkt_buf[i])
+		{
+			fprintf(stderr, "%d\t", i);
+			fprintf(stderr, "SEARCH\t%4d \t\t\n", getKeyFromPacket(pkt_buf[i]);
+		}
+		else if (isRangePacket(pkt_buf[i])
+		{
+			fprintf(stderr, "%d\t", i);
+			fprintf(stderr, "RANGE\t%4d %4d\t\n", getKeyFromPacket(pkt_buf[i], getUpperKeyFromRangePacket(pkt_buf[i]);
+		}
+		else if (isInsertPacket(pkt_buf[i])
+		{
+			fprintf(stderr, "%d\t", i);
+			fprintf(stderr, "INSERT\t%4d \t\t\n", getKeyFromPacket(pkt_buf[i]);
+		}
+		else if (isDeletePacket(pkt_buf[i])
+		{
+			fprintf(stderr, "%d\t", i);
+			fprintf(stderr, "DELETE\t%4d \t\t\n", getKeyFromPacket(pkt_buf[i]);
+		}
+	}
+	fprintf(stderr, "==================\n");
+}
+
+void show_leaves(clbpt_leaf_node *leaf)	// function for testing
 {
 	int count;
 	clbpt_leaf_node *temp = (clbpt_leaf_node *)malloc(sizeof(clbpt_leaf_node));
