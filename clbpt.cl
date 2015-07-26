@@ -591,9 +591,12 @@ _clbptWPacketInit(
 	}
 	// Initialize Delete Packet
 	if (gid < num_del) {
-		clbpt_leafmirror *mirror = del[gid].target;
-		del[gid].target = (clbpt_int_node *)mirror->parent;
-		free(heap, (uintptr_t)mirror);
+		clbpt_del_pkt del_pkt = del[gid];
+		clbpt_int_node *node = del_pkt.target;
+		uint entry_index;
+
+		entry_index = _binary_search(node, getKey(del_pkt.key));
+		free(heap, node->entry[entry_index].child);
 	}
 	// Handle them
 	if (gid == 0) {
@@ -1228,7 +1231,7 @@ _clbptWPacketBufferRootHandler(
 		int target_key;
 
 		target_key = getKey(del[gid].key);
-		for (uint i = 1; i < CLBPT_ORDER; i++) {
+		for (uint i = 1; i < 2 * CLBPT_ORDER; i++) {
 			if (getKey(proc_list[i].key) == target_key) {
 				proc_list[i] = ENTRY_NULL;
 			}
