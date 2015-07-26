@@ -71,13 +71,8 @@ int main()
 	fprintf(stderr, "CreateTree SUCCESS\n");
 	
 	int d[10] = { 7,21,24,23,14,15,16,17,18,19 };
-<<<<<<< HEAD
-	int d_rec[10] = { 8,22,25,24,15,16,17,18,20 };
-	err = clbptEnqueueInsertions(t, 1, d, d_rec);
-=======
 	int d_rec[10] = { 8,22,25,24,15,16,17,18,19,20 };
-	err = clbptEnqueueInsertions(t, 1, d, NULL);
->>>>>>> origin/master
+	err = clbptEnqueueInsertions(t, 1, d, d_rec);
 	if (err != CL_SUCCESS)
 	{
 		fprintf(stderr, "EnqueInsertions ERROR\n");
