@@ -74,6 +74,7 @@ typedef struct _clbpt_leafmirror {
 typedef struct _clbpt_leaf_entry {
 	int32_t key;
 	void *record_ptr;
+	struct _clbpt_leaf_entry *prev;
 	struct _clbpt_leaf_entry *next;
 } clbpt_leaf_entry;
 
