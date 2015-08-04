@@ -397,7 +397,9 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 			if (i == 0)	// Do nothing if the execute buffer is empty
 				break;
 
+			fprintf(stderr, "End of packets\n");
 			node_result = handle_node(node_addr);	// Handle the last operated node
+			fprintf(stderr, "leaf's entry with key %d\n", tree->leaf->head->key);
 
 			if (node_result > 0)	// Need to rollback insertion packets to waiting buffer
 			{
@@ -487,11 +489,12 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 				leftmost_node_addr = node_addr;
 			}
 
-			if (leftmost_node_addr != NULL ||
+			if (leftmost_node_addr != NULL &&
 				((clbpt_leaf_node *)node_addr)->mirror->parent !=
 				((clbpt_leaf_node *)leftmost_node_addr)->mirror->parent)	// node's parent is different with leftmost node's, handle leftmost node
 			{
 				handle_leftmost_node(leftmost_node_addr);
+				fprintf(stderr, "leaf's entry with key %d\n", tree->leaf->head->key);
 				leftmost_node_addr = NULL;
 			}
 
@@ -516,6 +519,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 				fprintf(stderr, "insert to node with head = %d\n", ((clbpt_leaf_node *)node_addr)->head->key);
 			//</DEBUG>
 			instr_result[i] = insert_leaf(key, node_addr, (CLBPT_RECORD_TYPE)tree->execute_result_buf[i], tree->record_size);
+			fprintf(stderr, "leaf's entry with key %d\n", tree->leaf->head->key);
 			//<DEBUG>
 			fprintf(stderr, "After insert\n");
 			show_leaves(tree->leaf);
@@ -523,8 +527,10 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 		}
 		else if (isDeletePacket(pkt))
 		{
+			fprintf(stderr, "leaf's entry with key %d\n", tree->leaf->head->key);
 			instr_result[i] = delete_leaf(key, node_addr);
 			//<DEBUG>
+			fprintf(stderr, "leaf's entry with key %d\n", tree->leaf->head->key);
 			fprintf(stderr, "After delete\n");
 			show_leaves(tree->leaf);
 			//</DEBUG>
@@ -611,7 +617,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	assert(err == CL_SUCCESS);
 
 	fprintf(stderr, "enqueue wpacket init SUCCESS\n");
-	err = clEnqueueReadBuffer(queue, tree->property_d, CL_TRUE, 0, sizeof(clbpt_property), &(tree->property), 0, NULL, NULL);
+	err = clEnqueueReadBuffer(queue, tree->property_d, CL_TRUE, 0, sizeof(clbpt_property), (tree->property), 0, NULL, NULL);
 
 	// Assign leafmirror_addr to node_sibling's parent
 	if (num_ins > 0)
@@ -626,6 +632,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	}
 
 	fprintf(stderr, "leafmirror_addr assign SUCCESS\n");
+	fprintf(stderr, "leaf's entry with key %d\n", tree->leaf->head->key);
 
 	_clbptPrintTree(tree->property);
 
@@ -795,12 +802,14 @@ int handle_leftmost_node(clbpt_leaf_node *node)
 	clbpt_leaf_node *node_sibling;
 	clbpt_leaf_entry *entry_head;
 
-	fprintf(stderr, "handle leftmost_node START with num_entry = %d", node->num_entry);
+	fprintf(stderr, "handle leftmost_node START with num_entry = %d\n", node->num_entry);
 	if (node->num_entry >= half_f(order)) return 0;
 	if (node->next_node != NULL)
 	{
+		
 		if (node->num_entry + node->next_node->num_entry < order)	// Merge (with right sibling)
 		{
+			fprintf(stderr, "Merge\n");
 			node_sibling = node->next_node;
 			node->num_entry += node_sibling->num_entry;
 			node->next_node = node_sibling->next_node;
@@ -821,6 +830,8 @@ int handle_leftmost_node(clbpt_leaf_node *node)
 			node_sibling->mirror = NULL;
 			node_sibling->parent_key = 0;
 			free(node_sibling);
+
+			fprintf(stderr, "node with num_entries = %d\n", node->num_entry);
 		}
 		else	// Borrow (from right sibling)
 		{
@@ -1037,6 +1048,8 @@ int delete_leaf(int32_t key, void *node_addr)
 	node = node_addr;
 	entry = node->head;
 
+	fprintf(stderr, "node_head with key = %d\n", node->head->key);
+
 	// Scan through entries
 	while(entry != NULL)
 	{
@@ -1057,6 +1070,7 @@ int delete_leaf(int32_t key, void *node_addr)
 		if (entry == node->head)	// Delete head entry
 		{
 			node->head = entry->next;
+			fprintf(stderr, "node_head with key = %d\n", node->head->key);
 		}
 		if ((entry_prev = entry->prev) != NULL)
 		{
@@ -1150,7 +1164,6 @@ _clbptPrintNode(
 	clbpt_int_node *node
 	)
 {
-	return;
 	for (int i = 0; i < level_proc; i++)
 		fprintf(stderr, " ");
 	fprintf(stderr, "Node:%p (num_entry=%u, parent=%p, parent_key=%d)\n",
