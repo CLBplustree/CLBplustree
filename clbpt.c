@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file The front-end source file
  */
 
@@ -149,14 +149,14 @@ int clbptCreatePlatform(
 int clbptCreateTree(
 	clbpt_tree *dst_tree_ptr,
 	clbpt_platform platform,
-	const int order,
+	const int degree,
 	const size_t record_size)
 {
 	int err;
 	clbpt_tree dst_tree;
 	dst_tree = malloc(sizeof(struct _clbpt_tree));
 	dst_tree->platform = platform;
-	dst_tree->order = order;
+	dst_tree->degree = degree;
 	dst_tree->record_size = record_size;
 	dst_tree->buf_status = CLBPT_STATUS_DONE;
 	dst_tree->fetch_buf = calloc(sizeof(clbpt_packet), CLBPT_BUF_SIZE);
@@ -228,7 +228,7 @@ int clbptEnqueueRangeSearches(
 		err = clbptEnqueueFecthBuffer(
 			tree,
 			CLBPT_PACKET_RANGE(l_keys[i], u_keys[i]),
-			record_list[i]);
+			(void *)record_list);
 		if (err != CLBPT_SUCCESS) return err;
 	}
 	return CLBPT_SUCCESS;
