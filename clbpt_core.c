@@ -271,9 +271,9 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 	isEmpty_d = clCreateBuffer(context, 0, sizeof(uint8_t), NULL, &err);
 	assert(err == CL_SUCCESS);
 
-	err = clEnqueueWriteBuffer(queue, wait_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(clbpt_packet), tree->wait_buf, 0, NULL, NULL);
+	err = clEnqueueWriteBuffer(queue, tree->wait_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(clbpt_packet), tree->wait_buf, 0, NULL, NULL);
 	assert(err == CL_SUCCESS);
-	err = clEnqueueWriteBuffer(queue, result_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(void *), tree->result_buf, 0, NULL, NULL);
+	err = clEnqueueWriteBuffer(queue, tree->result_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(void *), tree->result_buf, 0, NULL, NULL);
 	assert(err == CL_SUCCESS);
 
 	// kernel _clbptPacketSelect
@@ -327,46 +327,6 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 	err = clEnqueueReadBuffer(queue, tree->result_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(void *), tree->execute_result_buf, 0, NULL, NULL);
 	assert(err == CL_SUCCESS);
 
-<<<<<<< HEAD
-	// <DEBUG>
-	/*
-	fprintf(stderr, "After sort\n");
-	fprintf(stderr, "_Execute_buf_\n");
-	for (i = 0; i < buf_size; i++) {
-		if (isNopPacket((clbpt_packet)tree->execute_buf[i])) {
-			fprintf(stderr, "NOP\n");
-			fprintf(stderr, "i = %d\n", i);
-			break;
-		} else if (isSearchPacket((clbpt_packet)tree->execute_buf[i])) {
-			fprintf(stderr, "SEARCH\t%4d \t\t\n", getKeyFromPacket((clbpt_packet)tree->execute_buf[i]));
-			fprintf(stderr, "i = %d\n", i);
-		} else if (isRangePacket((clbpt_packet)tree->execute_buf[i])) {
-			fprintf(stderr, "RANGE\t%4d %4d\t\n", getKeyFromPacket((clbpt_packet)tree->execute_buf[i]), getUpperKeyFromRangePacket((clbpt_packet)tree->execute_buf[i]));
-			fprintf(stderr, "i = %d\n", i);
-		} else if (isInsertPacket((clbpt_packet)tree->execute_buf[i])) {
-			fprintf(stderr, "INSERT\t%4d \t\t\n", getKeyFromPacket((clbpt_packet)tree->execute_buf[i]));
-			fprintf(stderr, "i = %d\n", i);
-		} else if (isDeletePacket((clbpt_packet)tree->execute_buf[i])) {
-			fprintf(stderr, "DELETE\t%4d \t\t\n", getKeyFromPacket((clbpt_packet)tree->execute_buf[i]));
-			fprintf(stderr, "i = %d\n", i);
-		}
-	}
-	fprintf(stderr, "size = %d\n", i);
-	fprintf(stderr, "\n");
-	*/
-	fprintf(stderr, "After sort\n");
-	fprintf(stderr, "_Execute_result_buf_\n");
-	for (i = 0; i < buf_size; i++) {
-		if (tree->execute_result_buf[i] == NULL)
-			fprintf(stderr, "NULL\n");
-		else
-			fprintf(stderr, "%d\n", *((CLBPT_KEY_TYPE *)tree->execute_result_buf[i]));
-	}
-	fprintf(stderr, "size = %d\n", i);
-	fprintf(stderr, "\n");
-
-=======
->>>>>>> origin/master
 	return isEmpty;
 }
 
@@ -728,6 +688,7 @@ int handle_node(void *node_addr)
 		}
 		node_sibling = (clbpt_leaf_node *)malloc(sizeof(clbpt_leaf_node));
 		m = half_f(node->num_entry);
+		printf("num of node : %d\n", node->num_entry);
 		node_sibling->num_entry = node->num_entry - m;
 		node->num_entry = m;
 		printf("split result: %d, %d\n", node->num_entry, node_sibling->num_entry);
@@ -1009,7 +970,7 @@ int insert_leaf(int32_t key, void *node_addr, CLBPT_RECORD_TYPE record, size_t r
 {
 	int existed = 0;
 	clbpt_leaf_node *node;
-	clbpt_leaf_entry *entry_prev *entry_new, *entry;
+	clbpt_leaf_entry *entry_prev, *entry_new, *entry;
 
 	node = node_addr;
 	entry_prev = NULL;
@@ -1033,31 +994,20 @@ int insert_leaf(int32_t key, void *node_addr, CLBPT_RECORD_TYPE record, size_t r
 
 	if (!existed)	// Insert
 	{
-<<<<<<< HEAD
 		entry_new = (clbpt_leaf_entry *)malloc(sizeof(clbpt_leaf_entry));
 		entry_new->key = key;
 		entry_new->record_ptr = (CLBPT_RECORD_TYPE *)malloc(record_size);
 		*((CLBPT_RECORD_TYPE *)entry_new->record_ptr) = record;
 		entry_new->prev = entry_prev;
 		entry_new->next = entry;
+		if (node->head == NULL)
+		{
+			node->head = entry_new;
+		}
 		if (entry != NULL)
-=======
-		entry_temp = entry->next;
-		entry->next = (clbpt_leaf_entry *)malloc(sizeof(clbpt_leaf_entry));
-		entry->next->key = key;
-<<<<<<< HEAD
-		entry->next->record_ptr = (CLBPT_RECORD_TYPE *)malloc(sizeof(CLBPT_RECORD_TYPE));
-		//*((int32_t *)entry->next->record_ptr) = key;	///// NEED CHANGE
-=======
-		entry->next->record_ptr = (CLBPT_RECORD_TYPE *)malloc(record_size);clbpt_property
->>>>>>> origin/master
-		*((CLBPT_RECORD_TYPE *)entry->next->record_ptr) = record;
-		entry->next->next = entry_temp;
-		if (entry_temp == node->head)
->>>>>>> parent of 096d3db... Reverse engineer.....
 		{
 			entry->prev = entry_new;
-			if (entry == node->head)	// Insert before head entry
+			if (entry == node->head )	// Insert before head entry
 			{
 				node->head = entry_new;
 			}
@@ -1073,7 +1023,7 @@ int insert_leaf(int32_t key, void *node_addr, CLBPT_RECORD_TYPE record, size_t r
 		fprintf(stderr, "INSERT FAILED: key: %d is already in the B+ Tree\n", key);
 	}
 
-	free(entry_free);
+	//free(entry_free);
 
 	return existed;
 }
@@ -1084,7 +1034,7 @@ int delete_leaf(int32_t key, void *node_addr)
 	clbpt_leaf_node *node;
 	clbpt_leaf_entry *entry_prev, *entry;
 
-	node = node_addr
+	node = node_addr;
 	entry = node->head;
 
 	// Scan through entries
@@ -1200,6 +1150,7 @@ _clbptPrintNode(
 	clbpt_int_node *node
 	)
 {
+	return;
 	for (int i = 0; i < level_proc; i++)
 		fprintf(stderr, " ");
 	fprintf(stderr, "Node:%p (num_entry=%u, parent=%p, parent_key=%d)\n",
@@ -1250,30 +1201,30 @@ void show_pkt_buf(clbpt_packet *pkt_buf, uint32_t buf_size)
 	fprintf(stderr, "===  buf_info  ===\n");
 	for (i = 0; i < buf_size; i++)
 	{
-		if (isNopPacket(pkt_buf[i])
+		if (isNopPacket(pkt_buf[i]))
 		{
 			fprintf(stderr, "%d\t", i);
 			fprintf(stderr, "NOP\n");
 		}
-		else if (isSearchPacket(pkt_buf[i])
+		else if (isSearchPacket(pkt_buf[i]))
 		{
 			fprintf(stderr, "%d\t", i);
-			fprintf(stderr, "SEARCH\t%4d \t\t\n", getKeyFromPacket(pkt_buf[i]);
+			fprintf(stderr, "SEARCH\t%4d \t\t\n", getKeyFromPacket(pkt_buf[i]));
 		}
-		else if (isRangePacket(pkt_buf[i])
+		else if (isRangePacket(pkt_buf[i]))
 		{
 			fprintf(stderr, "%d\t", i);
-			fprintf(stderr, "RANGE\t%4d %4d\t\n", getKeyFromPacket(pkt_buf[i], getUpperKeyFromRangePacket(pkt_buf[i]);
+			fprintf(stderr, "RANGE\t%4d %4d\t\n", getKeyFromPacket(pkt_buf[i]), getUpperKeyFromRangePacket(pkt_buf[i]));
 		}
-		else if (isInsertPacket(pkt_buf[i])
+		else if (isInsertPacket(pkt_buf[i]))
 		{
 			fprintf(stderr, "%d\t", i);
-			fprintf(stderr, "INSERT\t%4d \t\t\n", getKeyFromPacket(pkt_buf[i]);
+			fprintf(stderr, "INSERT\t%4d \t\t\n", getKeyFromPacket(pkt_buf[i]));
 		}
-		else if (isDeletePacket(pkt_buf[i])
+		else if (isDeletePacket(pkt_buf[i]))
 		{
 			fprintf(stderr, "%d\t", i);
-			fprintf(stderr, "DELETE\t%4d \t\t\n", getKeyFromPacket(pkt_buf[i]);
+			fprintf(stderr, "DELETE\t%4d \t\t\n", getKeyFromPacket(pkt_buf[i]));
 		}
 	}
 	fprintf(stderr, "==================\n");
@@ -1286,7 +1237,7 @@ void show_leaves(clbpt_leaf_node *leaf)	// function for testing
 	temp->next_node = leaf;
 	clbpt_leaf_entry *entry;
 
-	if (temp->next_node->head == NULL)
+	if (temp == NULL || leaf == NULL || temp->next_node->head == NULL)
 	{
 		fprintf(stderr, "Leaf is EMPTY\n");
 		return;

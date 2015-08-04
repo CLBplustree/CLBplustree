@@ -71,30 +71,26 @@ int main()
 	fprintf(stderr, "CreateTree SUCCESS\n");
 	
 	int d[10] = { 7,21,24,23,14,15,16,17,18,19 };
-<<<<<<< HEAD
-	int d_rec[10] = { 8,22,25,24,15,16,17,18,20 };
-	err = clbptEnqueueInsertions(t, 1, d, d_rec);
-=======
 	int d_rec[10] = { 8,22,25,24,15,16,17,18,19,20 };
-	err = clbptEnqueueInsertions(t, 1, d, NULL);
->>>>>>> origin/master
+	err = clbptEnqueueInsertions(t, 1, d, d_rec);
 	if (err != CL_SUCCESS)
 	{
 		fprintf(stderr, "EnqueInsertions ERROR\n");
 	}
 	clbptFinish(t);
-	//getchar();
+	getchar();
 	printf("============\n");
 
 	
 	int a[10] = { 10,3,5,6,2,8,11,12,13,1 };
 	int a_rec[10] = { 11,4,6,7,3,9,12,13,14,2 };
-	err = clbptEnqueueInsertions(t, 9, a, a_rec);
+	err = clbptEnqueueInsertions(t, 3, a, a_rec);
 	if (err != CL_SUCCESS)
 	{
 		fprintf(stderr, "EnqueInsertions ERROR\n");
 	}
-	clbptFinish(t); 
+	clbptFinish(t);
+	getchar();
 
 	err = clbptEnqueueDeletions(t, 3, a, NULL);
 	if (err != CL_SUCCESS)
