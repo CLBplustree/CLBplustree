@@ -594,6 +594,7 @@ _clbptWPacketInit(
 		clbpt_leafmirror *mirror = del[gid].target;
 		del[gid].target = (clbpt_int_node *)mirror->parent;
 		free(heap, (uintptr_t)mirror);
+		printf("OCL: FREE MIRROR %p new target %p\n", mirror, del[gid].target);
 	}
 	// Handle them
 	if (gid == 0) {
@@ -656,7 +657,7 @@ _clbptWPacketBufferHandler(
 			if (ins_begin == num_ins) {
 				cur_parent = del[del_begin].target->parent;
 			}
-			else if (del_begin== num_del) {
+			else if (del_begin == num_del) {
 				cur_parent = ins[ins_begin].target->parent;
 			}
 			else if (getKey(ins[ins_begin].entry.key) <
@@ -1223,12 +1224,14 @@ _clbptWPacketBufferRootHandler(
 	if (gid < target->num_entry) {
 		proc_list[gid] = target->entry[gid];
 	}
+	work_group_barrier(CLK_LOCAL_MEM_FENCE);
 	// Delete
 	if (gid < num_del) {
 		int target_key;
 
 		target_key = getKey(del[gid].key);
-		for (uint i = 1; i < CLBPT_ORDER; i++) {
+		for (uint i = 0; i < CLBPT_ORDER; i++) {
+			printf("OCL: target %p %d\n", del[gid].target, getKey(proc_list[i].key));
 			if (getKey(proc_list[i].key) == target_key) {
 				proc_list[i] = ENTRY_NULL;
 			}

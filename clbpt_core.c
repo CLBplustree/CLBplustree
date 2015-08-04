@@ -629,6 +629,9 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 		{
 			((clbpt_leaf_node *)addr[i])->mirror = leafmirror_addr[i];
 		}
+		//clReleaseMemObject(ins_d);
+		//clReleaseMemObject(addr_d);
+		//clReleaseMemObject(leafmirror_addr_d);
 	}
 
 	fprintf(stderr, "leafmirror_addr assign SUCCESS\n");
