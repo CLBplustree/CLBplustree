@@ -21,7 +21,7 @@ static size_t max_local_work_size;		// get this value in _clbptInitialize
 static uint32_t order = CLBPT_ORDER;	// get this value in _clbptInitialize
 
 
-int handle_node(void *node_addr);
+int handle_node(void *node_addr, void *leftmost_node_addr);
 int handle_leftmost_node(clbpt_leaf_node *node);
 int search_leaf(int32_t key, void *node_addr, void *result_addr);
 int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_addr);
@@ -398,7 +398,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 				break;
 
 			fprintf(stderr, "End of packets\n");
-			node_result = handle_node(node_addr);	// Handle the last operated node
+			node_result = handle_node(node_addr, leftmost_node_addr);	// Handle the last operated node
 			fprintf(stderr, "leaf's entry with key %d\n", tree->leaf->head->key);
 
 			if (node_result > 0)	// Need to rollback insertion packets to waiting buffer
@@ -433,27 +433,33 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 						
 					k--;
 				}
-				node_result = handle_node(node_addr);	// After rollback, re-handle the node
+				node_result = handle_node(node_addr, leftmost_node_addr);	// After rollback, re-handle the node
 			}
 			if (node_result == leftMostNodeBorrowMerge)
 			{
+				fprintf(stderr, "leftMostNodeBorrowMerge\n");
 				leftmost_node_addr = node_addr;
 			}
+			else if (node_result == MergeWithLeftMostNode)
+			{
+				leftmost_node_addr = NULL;
+			}
 
-			//if (leftmost_node_addr != NULL ||
-			//	((clbpt_leaf_node *)node_addr)->mirror->parent !=
-			//	((clbpt_leaf_node *)leftmost_node_addr)->mirror->parent)	// node's parent is different with leftmost node's, handle leftmost node
-			//{
-			//	handle_leftmost_node(leftmost_node_addr);
-			//	leftmost_node_addr = NULL;
-			//}
+			if (leftmost_node_addr != NULL &&
+				((clbpt_leaf_node *)node_addr)->mirror->parent !=
+				((clbpt_leaf_node *)leftmost_node_addr)->mirror->parent)	// node's parent is different with leftmost node's, handle leftmost node
+			{
+				handle_leftmost_node(leftmost_node_addr);
+				fprintf(stderr, "leaf's entry with key %d\n", tree->leaf->head->key);
+				leftmost_node_addr = NULL;
+			}
 
 			break;
 		}
 
 		if (node_addr != tree->node_addr_buf[i])	// Accessed node changed
 		{
-			node_result = handle_node(node_addr);	// Handle the previous node
+			node_result = handle_node(node_addr, leftmost_node_addr);	// Handle the previous node
 
 			if (node_result > 0)	// Need to rollback insertion packets to waiting buffer
 			{
@@ -482,10 +488,11 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 						delete_leaf(getKeyFromPacket(tree->execute_buf[k]), node_addr);
 					k--;
 				}
-				node_result = handle_node(node_addr);	// After rollback, re-handle the node
+				node_result = handle_node(node_addr, leftmost_node_addr);	// After rollback, re-handle the node
 			}
 			if (node_result == leftMostNodeBorrowMerge)
 			{
+				fprintf(stderr, "leftMostNodeBorrowMerge\n");
 				leftmost_node_addr = node_addr;
 			}
 
@@ -682,7 +689,7 @@ int _clbptReleaseLeaf(clbpt_tree tree)
 	return CL_SUCCESS;
 }
 
-int handle_node(void *node_addr)
+int handle_node(void *node_addr, void *leftmost_node_addr)
 {
 	int m;
 	clbpt_leaf_node *node_sibling, *node = node_addr;
@@ -754,6 +761,9 @@ int handle_node(void *node_addr)
 				node_sibling->mirror = NULL;
 				node_sibling->parent_key = 0;
 				free(node_sibling);
+
+				if (node == leftmost_node_addr)
+					return MergeWithLeftMostNode;
 			}
 			else	// Borrow (from left sibling)
 			{

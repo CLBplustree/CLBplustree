@@ -23,6 +23,7 @@
 #define half_f(X) (((int)X)/2)
 
 #define leftMostNodeBorrowMerge -1
+#define MergeWithLeftMostNode -2
 
 /**
  * @brief Get Devices' info of clbpt
