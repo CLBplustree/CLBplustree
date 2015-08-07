@@ -697,18 +697,18 @@ int _clbptReleaseLeaf(clbpt_tree tree)
 	free(tree->leafmirror_addr);
 
 	// Free device-side memory
-	clReleaseMemObject(wait_buf_d);
-	clReleaseMemObject(execute_buf_d);
-	clReleaseMemObject(result_buf_d);
-	clReleaseMemObject(execute_buf_d_temp);
-	clReleaseMemObject(result_buf_d_temp);
+	clReleaseMemObject(tree->wait_buf_d);
+	clReleaseMemObject(tree->execute_buf_d);
+	clReleaseMemObject(tree->result_buf_d);
+	clReleaseMemObject(tree->execute_buf_d_temp);
+	clReleaseMemObject(tree->result_buf_d_temp);
 
-	clReleaseMemObject(property_d);
+	clReleaseMemObject(tree->property_d);
 
-	clReleaseMemObject(ins_d);
-	clReleaseMemObject(del_d);
-	clReleaseMemObject(leafnode_addr_d);
-	clReleaseMemObject(leafmirror_addr_d);
+	clReleaseMemObject(tree->ins_d);
+	clReleaseMemObject(tree->del_d);
+	clReleaseMemObject(tree->leafnode_addr_d);
+	clReleaseMemObject(tree->leafmirror_addr_d);
 
 	clSVMFree(tree->platform->context, tree->heap);
 
@@ -752,9 +752,9 @@ int handle_node(clbpt_tree tree, void *node_addr, void *leftmost_node_addr)
 		clbpt_entry entry_d;
 		entry_d.key = node_sibling->parent_key;
 		entry_d.child = NULL;
-		tree->ins[num_ins].target = node->mirror;
-		tree->ins[num_ins].entry = entry_d;
-		tree->leafnode_addr[num_ins] = (void *)node_sibling;
+		tree->ins[tree->num_ins].target = node->mirror;
+		tree->ins[tree->num_ins].entry = entry_d;
+		tree->leafnode_addr[tree->num_ins] = (void *)node_sibling;
 		fprintf(stderr, "insert to internal with head = %d\n", node_sibling->head->key);
 		tree->num_ins++;
 	}
@@ -776,8 +776,8 @@ int handle_node(clbpt_tree tree, void *node_addr, void *leftmost_node_addr)
 				}
 
 				// Delete parent_key to internal node
-				tree->del[num_del].target = node_sibling->mirror;
-				tree->del[num_del].key = node_sibling->parent_key;
+				tree->del[tree->num_del].target = node_sibling->mirror;
+				tree->del[tree->num_del].key = node_sibling->parent_key;
 				tree->num_del++;
 
 				node_sibling->head = NULL;
@@ -798,8 +798,8 @@ int handle_node(clbpt_tree tree, void *node_addr, void *leftmost_node_addr)
 				fprintf(stderr, "node with head %d\n", node->head->key);
 
 				// Delete old parent_key to internal node
-				tree->del[num_del].target = node->mirror;
-				tree->del[num_del].key = node->parent_key;
+				tree->del[tree->num_del].target = node->mirror;
+				tree->del[tree->num_del].key = node->parent_key;
 				tree->num_del++;
 
 				m = half_f(node_sibling->num_entry + node->num_entry);
@@ -820,9 +820,9 @@ int handle_node(clbpt_tree tree, void *node_addr, void *leftmost_node_addr)
 				clbpt_entry entry_d;
 				entry_d.key = node->parent_key;
 				entry_d.child = NULL;
-				tree->ins[num_ins].target = node->mirror;
-				tree->ins[num_ins].entry = entry_d;
-				tree->leafnode_addr[num_ins] = (void *)node;
+				tree->ins[tree->num_ins].target = node->mirror;
+				tree->ins[tree->num_ins].entry = entry_d;
+				tree->leafnode_addr[tree->num_ins] = (void *)node;
 				tree->num_ins++;
 			}
 		}
@@ -858,8 +858,8 @@ int handle_leftmost_node(clbpt_tree tree, clbpt_leaf_node *node)
 			}
 
 			// Delete parent_key to internal node
-			tree->del[num_del].target = node_sibling->mirror;
-			tree->del[num_del].key = node_sibling->parent_key;
+			tree->del[tree->num_del].target = node_sibling->mirror;
+			tree->del[tree->num_del].key = node_sibling->parent_key;
 			tree->num_del++;
 
 			node_sibling->head = NULL;
@@ -881,8 +881,8 @@ int handle_leftmost_node(clbpt_tree tree, clbpt_leaf_node *node)
 				parent_key_update = 1;
 
 				// Delete old parent_key to internal node
-				tree->del[num_del].target = node_sibling->mirror;
-				tree->del[num_del].key = node_sibling->parent_key;
+				tree->del[tree->num_del].target = node_sibling->mirror;
+				tree->del[tree->num_del].key = node_sibling->parent_key;
 				tree->num_del++;
 			}
 			m = half_f(node->num_entry + node_sibling->num_entry);
@@ -904,9 +904,9 @@ int handle_leftmost_node(clbpt_tree tree, clbpt_leaf_node *node)
 				clbpt_entry entry_d;
 				entry_d.key = node_sibling->parent_key;
 				entry_d.child = NULL;
-				tree->ins[num_ins].target = node_sibling->mirror;
-				tree->ins[num_ins].entry = entry_d;
-				tree->leafnode_addr[num_ins] = (void *)node_sibling;
+				tree->ins[tree->num_ins].target = node_sibling->mirror;
+				tree->ins[tree->num_ins].entry = entry_d;
+				tree->leafnode_addr[tree->num_ins] = (void *)node_sibling;
 				tree->num_ins++;
 			}
 		}
