@@ -177,10 +177,11 @@ int _clbptInitialize(clbpt_tree tree)
 	tree->property = (clbpt_property *)malloc(sizeof(clbpt_property));
 	tree->property->root = (void *)tree->leaf;
 
-	// Create node_addr buffer
+	// Create buffers
 	tree->node_addr_buf = (void **)malloc(tree->buf_size * sizeof(void *));
+	tree->instr_result_buf = (int *)calloc(tree->buf_size, sizeof(int));
 
-	// Create ins, del pkt buffer
+	// Create insert, delete packets buffers
 	tree->ins = (clbpt_ins_pkt *)malloc(tree->buf_size * sizeof(clbpt_ins_pkt));
 	tree->leafnode_addr = (void **)malloc(tree->buf_size * sizeof(void *));
 	tree->leafmirror_addr = (void **)malloc(tree->buf_size * sizeof(void *));
@@ -376,7 +377,6 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 
 	// Handle leaf nodes
 	int i, j, k;
-	int *instr_result = (int *)calloc(tree->buf_size, sizeof(int));
 	int node_result = 0;
 	clbpt_packet pkt;
 	int32_t key, key_upper;
@@ -425,7 +425,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 					show_leaves(tree->leaf);
 					//</DEBUG>
 
-					if (instr_result[k] == 0)	// Delete the entry if the rollback insertion packet did insert
+					if (tree->instr_result_buf[k] == 0)	// Delete the entry if the rollback insertion packet did insert
 					{
 						delete_leaf(getKeyFromPacket(tree->execute_buf[k]), node_addr);
 						fprintf(stderr, "roll back delete\n");
@@ -483,7 +483,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 					show_leaves(tree->leaf);
 					//</DEBUG>
 
-					if (instr_result[k] == 0)	// Delete the entry if the rollback insertion packet did insert
+					if (tree->instr_result_buf[k] == 0)	// Delete the entry if the rollback insertion packet did insert
 						delete_leaf(getKeyFromPacket(tree->execute_buf[k]), node_addr);
 					k--;
 				}
@@ -512,12 +512,12 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 
 		if (isSearchPacket(pkt))
 		{
-			instr_result[i] = search_leaf(key, node_addr, tree->execute_result_buf[i]);
+			tree->instr_result_buf[i] = search_leaf(key, node_addr, tree->execute_result_buf[i]);
 		}
 		else if (isRangePacket(pkt))
 		{
 			key_upper = getUpperKeyFromRangePacket(pkt);
-			instr_result[i] = range_leaf(key, key_upper, node_addr, tree->execute_result_buf[i]);
+			tree->instr_result_buf[i] = range_leaf(key, key_upper, node_addr, tree->execute_result_buf[i]);
 		}
 		else if (isInsertPacket(pkt))
 		{
@@ -527,7 +527,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 			if (((clbpt_leaf_node *)node_addr)->head != NULL)
 				fprintf(stderr, "insert to node with head = %d\n", ((clbpt_leaf_node *)node_addr)->head->key);
 			//</DEBUG>
-			instr_result[i] = insert_leaf(key, node_addr, (CLBPT_RECORD_TYPE)tree->execute_result_buf[i], tree->record_size);
+			tree->instr_result_buf[i] = insert_leaf(key, node_addr, (CLBPT_RECORD_TYPE)tree->execute_result_buf[i], tree->record_size);
 			fprintf(stderr, "leaf's entry with key %d\n", tree->leaf->head->key);
 			//<DEBUG>
 			fprintf(stderr, "After insert\n");
@@ -537,7 +537,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 		else if (isDeletePacket(pkt))
 		{
 			fprintf(stderr, "leaf's entry with key %d\n", tree->leaf->head->key);
-			instr_result[i] = delete_leaf(key, node_addr);
+			tree->instr_result_buf[i] = delete_leaf(key, node_addr);
 			//<DEBUG>
 			fprintf(stderr, "leaf's entry with key %d\n", tree->leaf->head->key);
 			fprintf(stderr, "After delete\n");
@@ -686,12 +686,30 @@ int _clbptReleaseLeaf(clbpt_tree tree)
 	// Free root
 	free(tree->property);
 
-	// Free ins_pkt, del_pkt, node_addr buffers
+	// Free buffers
+	free(tree->node_addr_buf);
+	free(tree->instr_result_buf);
+
+	// Free insert, delete packets
 	free(tree->ins);
 	free(tree->del);
 	free(tree->leafnode_addr);
 	free(tree->leafmirror_addr);
-	free(tree->node_addr_buf);
+
+	// Free device-side memory
+	clReleaseMemObject(wait_buf_d);
+	clReleaseMemObject(execute_buf_d);
+	clReleaseMemObject(result_buf_d);
+	clReleaseMemObject(execute_buf_d_temp);
+	clReleaseMemObject(result_buf_d_temp);
+
+	clReleaseMemObject(property_d);
+
+	clReleaseMemObject(ins_d);
+	clReleaseMemObject(del_d);
+	clReleaseMemObject(leafnode_addr_d);
+	clReleaseMemObject(leafmirror_addr_d);
+
 	clSVMFree(tree->platform->context, tree->heap);
 
 	return CL_SUCCESS;

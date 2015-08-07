@@ -114,6 +114,7 @@ struct _clbpt_tree {
 	void **result_buf;
 	void **execute_result_buf;
 	void **node_addr_buf;
+	int *instr_result_buf;
 	uint32_t buf_size;
 
 	// Threads
@@ -137,7 +138,7 @@ struct _clbpt_tree {
 	void **leafnode_addr;
 	void **leafmirror_addr;
 
-	// Device side variables
+	// Device-side variables
 	cl_mem wait_buf_d;
 	cl_mem execute_buf_d;
 	cl_mem result_buf_d;
