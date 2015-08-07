@@ -129,6 +129,14 @@ struct _clbpt_tree {
 	clbpt_leaf_node *leaf;
 	size_t record_size;
 
+	// Insert, Delete packets info (to internal node)
+	uint32_t num_ins;
+	uint32_t num_del;
+	clbpt_ins_pkt *ins;
+	clbpt_del_pkt *del;
+	void **leafnode_addr;
+	void **leafmirror_addr;
+
 	// Device side variables
 	cl_mem wait_buf_d;
 	cl_mem execute_buf_d;

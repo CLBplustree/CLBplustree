@@ -8,21 +8,13 @@
 #include <assert.h>
 
 
-// Insert and Delete Packet (to internal node)
-static clbpt_ins_pkt *ins;
-static uint32_t num_ins;
-static clbpt_del_pkt *del;
-static uint32_t num_del;
-static void **addr;
-static void **leafmirror_addr;
-
 // Size and Order
 static size_t max_local_work_size;		// get this value in _clbptInitialize
 static uint32_t order = CLBPT_ORDER;	// get this value in _clbptInitialize
 
 
-int handle_node(void *node_addr, void *leftmost_node_addr);
-int handle_leftmost_node(clbpt_leaf_node *node);
+int handle_node(clbpt_tree tree, void *node_addr, void *leftmost_node_addr);
+int handle_leftmost_node(clbpt_tree tree, clbpt_leaf_node *node);
 int search_leaf(int32_t key, void *node_addr, void *result_addr);
 int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_addr);
 int insert_leaf(int32_t key, void *node_addr, CLBPT_RECORD_TYPE record, size_t record_size);
@@ -188,12 +180,10 @@ int _clbptInitialize(clbpt_tree tree)
 	tree->node_addr_buf = (void **)malloc(tree->buf_size * sizeof(void *));
 
 	// Create ins, del pkt buffer
-	ins = (clbpt_ins_pkt *)malloc(tree->buf_size * sizeof(clbpt_ins_pkt));
-	addr = (void **)malloc(tree->buf_size * sizeof(void *));
-	leafmirror_addr = (void **)malloc(tree->buf_size * sizeof(void *));
-	num_ins = 0;
-	del = (clbpt_del_pkt *)malloc(tree->buf_size * sizeof(clbpt_del_pkt));
-	num_del = 0;
+	tree->ins = (clbpt_ins_pkt *)malloc(tree->buf_size * sizeof(clbpt_ins_pkt));
+	tree->leafnode_addr = (void **)malloc(tree->buf_size * sizeof(void *));
+	tree->leafmirror_addr = (void **)malloc(tree->buf_size * sizeof(void *));
+	tree->del = (clbpt_del_pkt *)malloc(tree->buf_size * sizeof(clbpt_del_pkt));
 
 	// Get CL_DEVICE_MAX_WORK_ITEM_SIZES	
 	size_t max_work_item_sizes[3];
@@ -381,8 +371,8 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	int32_t key, key_upper;
 	void *node_addr;
 	void *leftmost_node_addr = NULL;
-	num_ins = 0;
-	num_del = 0;
+	tree->num_ins = 0;
+	tree->num_del = 0;
 
 	node_addr = tree->node_addr_buf[0];
 
@@ -398,14 +388,13 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 				break;
 
 			fprintf(stderr, "End of packets\n");
-			node_result = handle_node(node_addr, leftmost_node_addr);	// Handle the last operated node
+			node_result = handle_node(tree, node_addr, leftmost_node_addr);	// Handle the last operated node
 			fprintf(stderr, "leaf's entry with key %d\n", tree->leaf->head->key);
 
 			if (node_result > 0)	// Need to rollback insertion packets to waiting buffer
 			{
 				//<DEBUG>
-				fprintf(stderr, "Insert ROLLBACK\n");
-				fprintf(stderr, "node_result = %d\n", node_result);
+				fprintf(stderr, "Insert ROLLBACK, # of pkts = %d\n", node_result);
 				//</DEBUG>
 
 				k = i-1;
@@ -433,7 +422,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 						
 					k--;
 				}
-				node_result = handle_node(node_addr, leftmost_node_addr);	// After rollback, re-handle the node
+				node_result = handle_node(tree, node_addr, leftmost_node_addr);	// After rollback, re-handle the node
 			}
 			if (node_result == leftMostNodeBorrowMerge)
 			{
@@ -449,7 +438,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 				((clbpt_leaf_node *)node_addr)->mirror->parent !=
 				((clbpt_leaf_node *)leftmost_node_addr)->mirror->parent)	// node's parent is different with leftmost node's, handle leftmost node
 			{
-				handle_leftmost_node(leftmost_node_addr);
+				handle_leftmost_node(tree, leftmost_node_addr);
 				fprintf(stderr, "leaf's entry with key %d\n", tree->leaf->head->key);
 				leftmost_node_addr = NULL;
 			}
@@ -459,14 +448,14 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 
 		if (node_addr != tree->node_addr_buf[i])	// Accessed node changed
 		{
-			node_result = handle_node(node_addr, leftmost_node_addr);	// Handle the previous node
+			node_result = handle_node(tree, node_addr, leftmost_node_addr);	// Handle the previous node
 
 			if (node_result > 0)	// Need to rollback insertion packets to waiting buffer
 			{
 				//<DEBUG>
-				fprintf(stderr, "Insert ROLLBACK\n");
-				fprintf(stderr, "node_result = %d\n", node_result);
+				fprintf(stderr, "Insert ROLLBACK, # of pkts = %d\n", node_result);
 				//</DEBUG>
+
 				k = i - 1;
 				for(; node_result > 0; node_result--)
 				{
@@ -488,7 +477,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 						delete_leaf(getKeyFromPacket(tree->execute_buf[k]), node_addr);
 					k--;
 				}
-				node_result = handle_node(node_addr, leftmost_node_addr);	// After rollback, re-handle the node
+				node_result = handle_node(tree, node_addr, leftmost_node_addr);	// After rollback, re-handle the node
 			}
 			if (node_result == leftMostNodeBorrowMerge)
 			{
@@ -500,7 +489,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 				((clbpt_leaf_node *)node_addr)->mirror->parent !=
 				((clbpt_leaf_node *)leftmost_node_addr)->mirror->parent)	// node's parent is different with leftmost node's, handle leftmost node
 			{
-				handle_leftmost_node(leftmost_node_addr);
+				handle_leftmost_node(tree, leftmost_node_addr);
 				fprintf(stderr, "leaf's entry with key %d\n", tree->leaf->head->key);
 				leftmost_node_addr = NULL;
 			}
@@ -550,7 +539,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	//</DEBUG>
 
 
-	if (num_ins == 0 && num_del == 0)
+	if (tree->num_ins == 0 && tree->num_del == 0)
 	{
 		return CL_SUCCESS;
 	}
@@ -558,41 +547,41 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	// clmem initialize
 	static cl_mem ins_d;
 	static cl_mem del_d;
-	static cl_mem addr_d;
+	static cl_mem leafnode_addr_d;
 	static cl_mem leafmirror_addr_d;
 
 	// clmem allocation
-	if (num_ins > 0)
+	if (tree->num_ins > 0)
 	{
-		ins_d = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, num_ins * sizeof(clbpt_ins_pkt), ins, &err);
+		ins_d = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, tree->num_ins * sizeof(clbpt_ins_pkt), tree->ins, &err);
 		assert(err == CL_SUCCESS);
-		addr_d = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, num_ins * sizeof(void *), (void *)addr, &err);
+		leafnode_addr_d = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, tree->num_ins * sizeof(void *), (void *)tree->leafnode_addr, &err);
 		assert(err == CL_SUCCESS);
-		leafmirror_addr_d = clCreateBuffer(context, 0, num_ins * sizeof(void *), NULL, &err);
+		leafmirror_addr_d = clCreateBuffer(context, 0, tree->num_ins * sizeof(void *), NULL, &err);
 		assert(err == CL_SUCCESS);
 
 		//<DEBUG>
-		err = clEnqueueReadBuffer(queue, ins_d, CL_TRUE, 0, num_ins * sizeof(clbpt_ins_pkt), ins, 0, NULL, NULL);
+		err = clEnqueueReadBuffer(queue, ins_d, CL_TRUE, 0, tree->num_ins * sizeof(clbpt_ins_pkt), tree->ins, 0, NULL, NULL);
 		assert(err == CL_SUCCESS);
 		fprintf(stderr, "insert packets to internal node:\n");
-		for(i = 0; i < num_ins; i++)
+		for(i = 0; i < tree->num_ins; i++)
 		{
-			fprintf(stderr, "insert %d, target: %p\n", ins[i].entry.key, ins[i].target);
+			fprintf(stderr, "insert %d, target: %p\n", tree->ins[i].entry.key, tree->ins[i].target);
 		}
 		//</DEBUG>
 	}
-	if (num_del > 0)
+	if (tree->num_del > 0)
 	{
-		del_d = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, num_del * sizeof(clbpt_del_pkt), del, &err);
+		del_d = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, tree->num_del * sizeof(clbpt_del_pkt), tree->del, &err);
 		assert(err == CL_SUCCESS);
 
 		//<DEBUG>
-		err = clEnqueueReadBuffer(queue, del_d, CL_TRUE, 0, num_del * sizeof(clbpt_del_pkt), del, 0, NULL, NULL);
+		err = clEnqueueReadBuffer(queue, del_d, CL_TRUE, 0, tree->num_del * sizeof(clbpt_del_pkt), tree->del, 0, NULL, NULL);
 		assert(err == CL_SUCCESS);
 		fprintf(stderr, "delete packets to internal node:\n");
-		for(i = 0; i < num_del; i++)
+		for(i = 0; i < tree->num_del; i++)
 		{
-			fprintf(stderr, "delete %d, target: %p\n", del[i].key, del[i].target);
+			fprintf(stderr, "delete %d, target: %p\n", tree->del[i].key, tree->del[i].target);
 		}
 		//</DEBUG>
 	}
@@ -601,24 +590,23 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	kernel = kernels[CLBPT_WPACKET_INIT];
 	err = clSetKernelArg(kernel, 0, sizeof(ins_d), (void *)&ins_d);
 	assert(err == CL_SUCCESS);
-	err = clSetKernelArg(kernel, 1, sizeof(addr_d), (void *)&addr_d);
+	err = clSetKernelArg(kernel, 1, sizeof(leafnode_addr_d), (void *)&leafnode_addr_d);
 	assert(err == CL_SUCCESS);
 	err = clSetKernelArg(kernel, 2, sizeof(leafmirror_addr_d), (void *)&leafmirror_addr_d);
 	assert(err == CL_SUCCESS);
-	err = clSetKernelArg(kernel, 3, sizeof(num_ins), (void *)&num_ins);
+	err = clSetKernelArg(kernel, 3, sizeof(tree->num_ins), (void *)&tree->num_ins);
 	assert(err == CL_SUCCESS);
 	err = clSetKernelArg(kernel, 4, sizeof(del_d), (void *)&del_d);
 	assert(err == CL_SUCCESS);
-	err = clSetKernelArg(kernel, 5, sizeof(num_del), (void *)&num_del);
+	err = clSetKernelArg(kernel, 5, sizeof(tree->num_del), (void *)&tree->num_del);
 	assert(err == CL_SUCCESS);
 	err = clSetKernelArgSVMPointer(kernel, 6, tree->heap);
-	//err = clSetKernelArg(kernel, 6, sizeof(tree->heap), (void *)&(tree->heap));
 	assert(err == CL_SUCCESS);
 	err = clSetKernelArg(kernel, 7, sizeof(tree->property_d), (void *)&tree->property_d);
 	assert(err == CL_SUCCESS);
 
 	// WPacketInit
-	global_work_size = num_ins > num_del ? num_ins : num_del;
+	global_work_size = tree->num_ins > tree->num_del ? tree->num_ins : tree->num_del;
 	local_work_size = max_local_work_size;
 	err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
 	assert(err == CL_SUCCESS);
@@ -627,17 +615,17 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	err = clEnqueueReadBuffer(queue, tree->property_d, CL_TRUE, 0, sizeof(clbpt_property), (tree->property), 0, NULL, NULL);
 
 	// Assign leafmirror_addr to node_sibling's parent
-	if (num_ins > 0)
+	if (tree->num_ins > 0)
 	{
-		err = clEnqueueReadBuffer(queue, leafmirror_addr_d, CL_TRUE, 0, num_ins * sizeof(void *), leafmirror_addr, 0, NULL, NULL);
+		err = clEnqueueReadBuffer(queue, leafmirror_addr_d, CL_TRUE, 0, tree->num_ins * sizeof(void *), tree->leafmirror_addr, 0, NULL, NULL);
 		assert(err == CL_SUCCESS);
 
-		for(i = 0; i < num_ins; i++)
+		for(i = 0; i < tree->num_ins; i++)
 		{
-			((clbpt_leaf_node *)addr[i])->mirror = leafmirror_addr[i];
+			((clbpt_leaf_node *)tree->leafnode_addr[i])->mirror = tree->leafmirror_addr[i];
 		}
 		//clReleaseMemObject(ins_d);
-		//clReleaseMemObject(addr_d);
+		//clReleaseMemObject(leafnode_addr_d);
 		//clReleaseMemObject(leafmirror_addr_d);
 	}
 
@@ -679,17 +667,17 @@ int _clbptReleaseLeaf(clbpt_tree tree)
 	free(tree->property);
 
 	// Free ins_pkt, del_pkt, node_addr buffers
-	free(ins);
-	free(del);
-	free(addr);
-	free(leafmirror_addr);
+	free(tree->ins);
+	free(tree->del);
+	free(tree->leafnode_addr);
+	free(tree->leafmirror_addr);
 	free(tree->node_addr_buf);
 	clSVMFree(tree->platform->context, tree->heap);
 
 	return CL_SUCCESS;
 }
 
-int handle_node(void *node_addr, void *leftmost_node_addr)
+int handle_node(clbpt_tree tree, void *node_addr, void *leftmost_node_addr)
 {
 	int m;
 	clbpt_leaf_node *node_sibling, *node = node_addr;
@@ -726,11 +714,11 @@ int handle_node(void *node_addr, void *leftmost_node_addr)
 		clbpt_entry entry_d;
 		entry_d.key = node_sibling->parent_key;
 		entry_d.child = NULL;
-		ins[num_ins].target = node->mirror;
-		ins[num_ins].entry = entry_d;
-		addr[num_ins] = (void *)node_sibling;
+		tree->ins[num_ins].target = node->mirror;
+		tree->ins[num_ins].entry = entry_d;
+		tree->leafnode_addr[num_ins] = (void *)node_sibling;
 		fprintf(stderr, "insert to internal with head = %d\n", node_sibling->head->key);
-		num_ins++;
+		tree->num_ins++;
 	}
 	else if (node->num_entry < half_f(order))	// Need Borrow or Merge
 	{
@@ -750,9 +738,9 @@ int handle_node(void *node_addr, void *leftmost_node_addr)
 				}
 
 				// Delete parent_key to internal node
-				del[num_del].target = node_sibling->mirror;
-				del[num_del].key = node_sibling->parent_key;
-				num_del++;
+				tree->del[num_del].target = node_sibling->mirror;
+				tree->del[num_del].key = node_sibling->parent_key;
+				tree->num_del++;
 
 				node_sibling->head = NULL;
 				node_sibling->num_entry = 0;
@@ -772,9 +760,9 @@ int handle_node(void *node_addr, void *leftmost_node_addr)
 				fprintf(stderr, "node with head %d\n", node->head->key);
 
 				// Delete old parent_key to internal node
-				del[num_del].target = node->mirror;
-				del[num_del].key = node->parent_key;
-				num_del++;
+				tree->del[num_del].target = node->mirror;
+				tree->del[num_del].key = node->parent_key;
+				tree->num_del++;
 
 				m = half_f(node_sibling->num_entry + node->num_entry);
 				node->num_entry = node_sibling->num_entry + node->num_entry - m;
@@ -794,10 +782,10 @@ int handle_node(void *node_addr, void *leftmost_node_addr)
 				clbpt_entry entry_d;
 				entry_d.key = node->parent_key;
 				entry_d.child = NULL;
-				ins[num_ins].target = node->mirror;
-				ins[num_ins].entry = entry_d;
-				addr[num_ins] = (void *)node;
-				num_ins++;
+				tree->ins[num_ins].target = node->mirror;
+				tree->ins[num_ins].entry = entry_d;
+				tree->leafnode_addr[num_ins] = (void *)node;
+				tree->num_ins++;
 			}
 		}
 		else	// Leftmost node borrows/merges from/with right sibling later
@@ -809,7 +797,7 @@ int handle_node(void *node_addr, void *leftmost_node_addr)
 	return 0;
 }
 
-int handle_leftmost_node(clbpt_leaf_node *node)
+int handle_leftmost_node(clbpt_tree tree, clbpt_leaf_node *node)
 {
 	int m, parent_key_update = 0;
 	clbpt_leaf_node *node_sibling;
@@ -832,9 +820,9 @@ int handle_leftmost_node(clbpt_leaf_node *node)
 			}
 
 			// Delete parent_key to internal node
-			del[num_del].target = node_sibling->mirror;
-			del[num_del].key = node_sibling->parent_key;
-			num_del++;
+			tree->del[num_del].target = node_sibling->mirror;
+			tree->del[num_del].key = node_sibling->parent_key;
+			tree->num_del++;
 
 			node_sibling->head = NULL;
 			node_sibling->num_entry = 0;
@@ -850,15 +838,14 @@ int handle_leftmost_node(clbpt_leaf_node *node)
 		{
 			node_sibling = node->next_node;
 			entry_head = node_sibling->head;
-			//if (*((int32_t *)entry_head->record_ptr) == node_sibling->parent_key)
 			if (entry_head->key == node_sibling->parent_key)
 			{
 				parent_key_update = 1;
 
 				// Delete old parent_key to internal node
-				del[num_del].target = node_sibling->mirror;
-				del[num_del].key = node_sibling->parent_key;
-				num_del++;
+				tree->del[num_del].target = node_sibling->mirror;
+				tree->del[num_del].key = node_sibling->parent_key;
+				tree->num_del++;
 			}
 			m = half_f(node->num_entry + node_sibling->num_entry);
 			node_sibling->num_entry = node->num_entry + node_sibling->num_entry - m;
@@ -879,10 +866,10 @@ int handle_leftmost_node(clbpt_leaf_node *node)
 				clbpt_entry entry_d;
 				entry_d.key = node_sibling->parent_key;
 				entry_d.child = NULL;
-				ins[num_ins].target = node_sibling->mirror;
-				ins[num_ins].entry = entry_d;
-				addr[num_ins] = (void *)node_sibling;
-				num_ins++;
+				tree->ins[num_ins].target = node_sibling->mirror;
+				tree->ins[num_ins].entry = entry_d;
+				tree->leafnode_addr[num_ins] = (void *)node_sibling;
+				tree->num_ins++;
 			}
 		}
 	}
@@ -904,14 +891,12 @@ int search_leaf(int32_t key, void *node_addr, void *result_addr)
 	// Scan through entries
 	while(entry->next != NULL)
 	{
-		//if (*((int32_t *)entry->next->record_ptr) == key)
 		if (entry->next->key == key)
 		{
 			existed = 1;
 			result_addr = entry->next->record_ptr;
 			break;
 		}
-		//if (*((int32_t *)entry->next->record_ptr) > key)
 		if (entry->next->key > key)
 		{
 			result_addr = NULL;
@@ -943,10 +928,8 @@ int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_add
 	clbpt_leaf_entry *start = NULL, *end = NULL, *entry = node->head;
 
 	// find start
-	//while(entry != NULL && *((int32_t *)entry->record_ptr) <= key_upper)
 	while(entry != NULL && entry->key <= key_upper)
 	{
-		//if (*((int32_t *)entry->record_ptr) >= key)
 		if (entry->key >= key)
 		{
 			start = entry;
@@ -977,7 +960,6 @@ int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_add
 		{
 			((void **)result_addr)[j] = entry->record_ptr;
 			fprintf(stderr, "\t(key: %d, record: %d)\n", entry->key, *((CLBPT_RECORD_TYPE *)entry->record_ptr));
-			//fprintf(stderr, "%d\n", *((CLBPT_RECORD_TYPE *)entry->record_ptr));
 		}
 		fprintf(stderr, "are inside the range[%d, %d]\n", start->key, end->key);
 	}
@@ -1046,8 +1028,6 @@ int insert_leaf(int32_t key, void *node_addr, CLBPT_RECORD_TYPE record, size_t r
 	{
 		fprintf(stderr, "INSERT FAILED: key: %d is already in the B+ Tree\n", key);
 	}
-
-	//free(entry_free);
 
 	return existed;
 }
