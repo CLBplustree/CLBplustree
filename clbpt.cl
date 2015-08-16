@@ -154,8 +154,7 @@ _clbptWPacketGroupHandler(
 	clbpt_int_node *parent,
 	uint target_branch_index,
 	clbpt_int_node *target,
-	clbpt_int_node *sibling,
-	clbpt_int_node *right_sibling
+	clbpt_int_node *sibling
 	);
 
 void
@@ -848,7 +847,6 @@ _clbptWPacketSuperGroupHandler(
 	uint target_branch_index;
 	clbpt_int_node *parent;
 	clbpt_int_node *sibling = 0;
-	clbpt_int_node *right_sibling = 0;
 
 	ins_begin = 0;
 	del_begin = 0;
@@ -894,7 +892,7 @@ _clbptWPacketSuperGroupHandler(
 		num_del_group = work_group_reduce_add(is_in_group);
 		_clbptWPacketGroupHandler(proc_list, ins + ins_begin, num_ins,
 			del + del_begin, num_del, heap, parent, target_branch_index,
-			(clbpt_int_node *)cur_target, sibling, right_sibling);
+			(clbpt_int_node *)cur_target, sibling);
 		ins_begin += num_ins_group;
 		del_begin += num_del_group;
 	}
@@ -911,8 +909,7 @@ _clbptWPacketGroupHandler(
 	clbpt_int_node *parent,
 	uint target_branch_index,
 	clbpt_int_node *target,
-	clbpt_int_node *sibling,
-	clbpt_int_node *right_sibling
+	clbpt_int_node *sibling
 	)
 {
 	uint gid = get_global_id(0);
@@ -1003,7 +1000,7 @@ _clbptWPacketGroupHandler(
 	/** !!!!!!!!!! NEED MODIFICATION !!!!!!!!!!!!!
 	 *  Parent of child needs modifing
 	 */
-	/*
+	
 	if (target_branch_index != 0 &&
 		proc_num_entry < half_c(CLBPT_ORDER))
 	{
@@ -1025,93 +1022,96 @@ _clbptWPacketGroupHandler(
 				del[0].target = parent;
 				del[0].key = target->parent_key;
 				free(heap, (uintptr_t)target);
-			}
+			} 
 		}
 		else {
 			// Borrow
-			if (gid == 0) {
-				sibling->entry[sibling->num_entry].key = target->parent_key;
-				sibling->entry[sibling->num_entry].child = proc_list[0].child;
+			// Step1. extend proc_list with sibling nodes
+			clbpt_entry temp_entry;
+			
+			if (gid < sibling->num_entry) {
+				temp_entry = sibling->entry[gid];
 			}
-			else if (gid < half_f(sibling->num_entry + proc_num_entry - 1)
-				- sibling->num_entry + 1)
-			{
-				sibling->entry[sibling->num_entry + gid] = proc_list[gid];
+			else if (gid == sibling->num_entry) {
+				temp_entry.key = target->parent_key;
+				temp_entry.child = proc_list[0].child;
 			}
-			else if (gid == half_f(sibling->num_entry + proc_num_entry - 1)
-				- sibling->num_entry + 1)
-			{
+			else if (gid < sibling->num_entry + proc_num_entry) {
+				temp_entry = proc_list[gid - sibling->num_entry];
+			}
+
+			// Step2. Refresh entries
+			if (gid < half_c(sibling->num_entry + proc_num_entry)) {
+				// Do nothing. Leave slibing node the same.
+			}
+			else if (gid == half_c(sibling->num_entry + proc_num_entry)) {
 				target->entry[0].key = KEY_MIN;
-				target->entry[0].child = proc_list[gid].child;
+				target->entry[0].child = temp_entry.child;
 			}
-			else if (gid < proc_num_entry) {
-				target->entry[gid - half_f(sibling->num_entry +
-					proc_num_entry - 1) + sibling->num_entry - 1] =
-					proc_list[gid];
+			else if (gid < sibling->num_entry + proc_num_entry) {
+				target->entry
+					[gid - half_c(sibling->num_entry + proc_num_entry)] =
+					temp_entry;
 			}
-			if (gid == 0) {
-				sibling->num_entry = half_f(sibling->num_entry +
-					proc_num_entry - 1) + 1;
+
+			// Step3. Refresh metadata
+			if (gid == half_c(sibling->num_entry + proc_num_entry) {
+				sibling->num_entry = 
+					half_c(sibling->num_entry + proc_num_entry);
 				del[0].target = parent;
 				del[0].key = target->parent_key;
 				ins[0].target = parent;
-				ins[0].entry.key = proc_list[half_f(sibling->num_entry +
-					proc_num_entry - 1) - sibling->num_entry + 1].key;
+				ins[0].entry.key = temp_entry.key;
 				ins[0].entry.child = (uintptr_t)target;
-				target->parent_key = proc_list[half_f(sibling->num_entry +
-					proc_num_entry - 1) - sibling->num_entry + 1].key;
-				target->num_entry = proc_num_entry - half_f(sibling->num_entry +
-					proc_num_entry - 1) + sibling->num_entry - 1;
+				target->num_entry = sibling->num_entry + proc_num_entry -
+					half_c(sibling->num_entry + proc_num_entry);
+				target->parent_key = temp_entry.key;
 			}
-			if (sibling == (clbpt_int_node *)(parent->entry[0].child))
-			{
-				right_sibling = target;
-			}
+
+			// Step4. Refresh sibling ptr.
 			sibling = target;
 		}
 	}
 	else if (proc_num_entry > CLBPT_ORDER) {
+		// Split
+		// Step1. Allocate a new node
 		clbpt_int_node *new_node;
 		if (gid == 0) {
 			new_node = (clbpt_int_node *)malloc(heap, sizeof(clbpt_int_node));
-			new_node->parent = (uintptr_t)parent;
 		}
 		work_group_barrier(0);
 		new_node = (clbpt_int_node *)
 			work_group_broadcast((uintptr_t)new_node, 0);
-		if (gid < half_f(proc_num_entry - 1) + 1)
+
+		// Step2. Refresh entries
+		if (gid < half_c(proc_num_entry))
 			;
-		else if (gid == half_f(proc_num_entry - 1) + 1) {
-			ins[0].target = parent;
-			ins[0].entry.key = proc_list[gid].key;
-			ins[0].entry.child = (uintptr_t)new_node;
+		else if (gid == half_c(proc_num_entry)) {
 			new_node->entry[0].key = KEY_MIN;
 			new_node->entry[0].child = (uintptr_t)proc_list[gid].child;
-			new_node->parent_key = proc_list[gid].key;
 		}
 		else if (gid < proc_num_entry) {
-			target->entry[gid - half_f(proc_num_entry - 1) - 1] =
+			new_node->entry[gid - half_c(proc_num_entry)] =
 				proc_list[gid];
 		}
+
+		// Step3. Refresh metadata
 		if (gid == 0) {
-			target->num_entry = half_f(proc_num_entry - 1) + 1;
-			new_node->num_entry = proc_num_entry -
-				half_f(proc_num_entry - 1) - 1;
-		}
-		if (sibling == (clbpt_int_node *)(parent->entry[0].child))
-		{
-			right_sibling = target;
+			target->num_entry = half_c(proc_num_entry);
+			ins[0].target = parent;
+			ins[0].entry.key = proc_list[half_c(proc_num_entry)].key;
+			ins[0].entry.child = (uintptr_t)new_node;
+			new_node->parent = (uintptr_t)parent;
+			new_node->parent_key = proc_list[half_c(proc_num_entry)].key;
+			new_node->num_entry = proc_num_entry - half_c(proc_num_entry);
 		}
 		sibling = new_node;
 	}
 	else {
-		if (sibling == (clbpt_int_node *)(parent->entry[0].child))
-		{
-			right_sibling = target;
-		}
+		// Leftmost node or the number of entries is legal
 		sibling = target;
 	}
-	*/
+	
 }
 
 /*
