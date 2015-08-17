@@ -145,6 +145,7 @@ struct _clbpt_tree {
 	cl_mem result_buf_d;
 	cl_mem execute_buf_d_temp;	// For _clbptPacketSort only
 	cl_mem result_buf_d_temp;	// For _clbptPacketSort only
+	cl_mem isEmpty_d;
 
 	cl_mem property_d;
 
