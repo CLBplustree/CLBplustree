@@ -111,7 +111,8 @@ struct _clbpt_tree {
 	clbpt_packet *fetch_buf;	// Store the fetched in packets
 	clbpt_packet *wait_buf;		// Swap the fetching buffer in and wait
 	clbpt_packet *execute_buf;	// Select packets from waiting buffer and sort
-	void **result_buf;
+	void **fetch_result_buf;
+	void **wait_result_buf;
 	void **execute_result_buf;
 	void **node_addr_buf;
 	int *instr_result_buf;

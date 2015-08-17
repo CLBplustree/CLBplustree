@@ -231,7 +231,6 @@ int _clbptInitialize(clbpt_tree tree)
 	err = clSetKernelArg(kernel, 1, sizeof(tree->property_d), (void *)&tree->property_d);
 	assert(err == CL_SUCCESS);
 	err = clSetKernelArgSVMPointer(kernel, 2, tree->heap);
-	//err = clSetKernelArg(kernel, 2, sizeof(tree->heap), (void *)&(tree->heap));
 	assert(err == CL_SUCCESS);
 
 	// Initialize
@@ -275,7 +274,7 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 
 	err = clEnqueueWriteBuffer(queue, tree->wait_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(clbpt_packet), tree->wait_buf, 0, NULL, NULL);
 	assert(err == CL_SUCCESS);
-	err = clEnqueueWriteBuffer(queue, tree->result_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(void *), tree->result_buf, 0, NULL, NULL);
+	err = clEnqueueWriteBuffer(queue, tree->result_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(void *), tree->wait_result_buf, 0, NULL, NULL);
 	assert(err == CL_SUCCESS);
 
 	// kernel _clbptPacketSelect
@@ -311,6 +310,7 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 	assert(err == CL_SUCCESS);
 	err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
 	assert(err == CL_SUCCESS);
+
 	err = clEnqueueReadBuffer(queue, isEmpty_d, CL_TRUE, 0, sizeof(uint8_t), &isEmpty, 0, NULL, NULL);
 	assert(err == CL_SUCCESS);
 	err = clEnqueueReadBuffer(queue, tree->wait_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(clbpt_packet), tree->wait_buf, 0, NULL, NULL);
@@ -324,6 +324,7 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 	global_work_size = local_work_size = max_local_work_size;
 	err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
 	assert(err == CL_SUCCESS);
+
 	err = clEnqueueReadBuffer(queue, tree->execute_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(clbpt_packet), tree->execute_buf, 0, NULL, NULL);
 	assert(err == CL_SUCCESS);
 	err = clEnqueueReadBuffer(queue, tree->result_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(void *), tree->execute_result_buf, 0, NULL, NULL);
@@ -342,10 +343,6 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 
 	size_t global_work_size;
 	size_t local_work_size;
-
-	// clmem initialize
-
-	// clmem allocation
 
 	// Get the number of non-NOP packets in execute buffer
 	int num_packets;
@@ -557,23 +554,8 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 		return CL_SUCCESS;
 	}
 
-	// clmem initialize
-	//static cl_mem ins_d;
-	//static cl_mem del_d;
-	//static cl_mem leafnode_addr_d;
-	//static cl_mem leafmirror_addr_d;
-
-	// clmem allocation
 	if (tree->num_ins > 0)
 	{
-		/*
-		ins_d = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, tree->num_ins * sizeof(clbpt_ins_pkt), tree->ins, &err);
-		assert(err == CL_SUCCESS);
-		leafnode_addr_d = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, tree->num_ins * sizeof(void *), (void *)tree->leafnode_addr, &err);
-		assert(err == CL_SUCCESS);
-		leafmirror_addr_d = clCreateBuffer(context, 0, tree->num_ins * sizeof(void *), NULL, &err);
-		assert(err == CL_SUCCESS);
-		*/
 		err = clEnqueueWriteBuffer(queue, tree->ins_d, CL_TRUE, 0, tree->num_ins * sizeof(clbpt_ins_pkt), tree->ins, 0, NULL, NULL);
 		assert(err == CL_SUCCESS);
 		err = clEnqueueWriteBuffer(queue, tree->leafnode_addr_d, CL_TRUE, 0, tree->num_ins * sizeof(void *), tree->leafnode_addr, 0, NULL, NULL);
@@ -591,10 +573,6 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	}
 	if (tree->num_del > 0)
 	{
-		/*
-		del_d = clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, tree->num_del * sizeof(clbpt_del_pkt), tree->del, &err);
-		assert(err == CL_SUCCESS);
-		*/
 		err = clEnqueueWriteBuffer(queue, tree->del_d, CL_TRUE, 0, tree->num_del * sizeof(clbpt_del_pkt), tree->del, 0, NULL, NULL);
 		assert(err == CL_SUCCESS);
 
