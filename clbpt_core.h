@@ -25,6 +25,8 @@
 #define leftMostNodeBorrowMerge -1
 #define mergeWithLeftMostNode -2
 
+void _clbptDebug(const char* Format, ...);
+
 /**
  * @brief Get Devices' info of clbpt
  * @param platform.

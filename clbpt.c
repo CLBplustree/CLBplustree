@@ -33,9 +33,9 @@ void _clbptLoadProgram(clbpt_platform platform, char *filename)
 	const char *source = &string[0];
 	platform->program = clCreateProgramWithSource(platform->context, 1, &source, 0, &err);
 	if (err != 0)
-		fprintf(stderr, "error load program : %d\n", err);
+		_clbptDebug( "error load program : %d\n", err);
 	if (platform->program == NULL)
-		fprintf(stderr, "error load program\n");
+		_clbptDebug( "error load program\n");
 	if ((err = clBuildProgram(platform->program, 1, platform->devices, "-cl-std=CL2.0 -cl-opt-disable -I . -I include/ -I /home/mangohot/KMA  -I /opt/AMDAPPSDK-3.0-0-Beta/include/ -I /usr/include/linux/ -I /usr/include/x86_64-linux-gnu/", 0, 0)) != CL_SUCCESS)
 	{
 		size_t len;
@@ -43,7 +43,7 @@ void _clbptLoadProgram(clbpt_platform platform, char *filename)
 		clGetProgramBuildInfo(platform->program, platform->devices[0], CL_PROGRAM_BUILD_LOG, 0, NULL, &len);
 		buffer = calloc(sizeof(char), len);
 		clGetProgramBuildInfo(platform->program, platform->devices[0], CL_PROGRAM_BUILD_LOG, len, buffer, NULL);
-		fprintf(stderr, "Error Build Program %d: %s\n", err, buffer);
+		_clbptDebug( "Error Build Program %d: %s\n", err, buffer);
 		exit(-1);
 	}
 }
@@ -62,18 +62,18 @@ void * _clbptHandler(void *tree)
 		if(((clbpt_tree)tree)->close_thread) pthread_exit(0);
 		do {
 			if(((clbpt_tree)tree)->close_thread) pthread_exit(0);
-			fprintf(stderr, "select START\n");
+			_clbptDebug( "select START\n");
 			isEmpty = _clbptSelectFromWaitBuffer((clbpt_tree)tree);
 			if (isEmpty)
 				break;
-			fprintf(stderr, "isEmpty = %d\n", isEmpty);
-			fprintf(stderr, "select COMPLETE\n");
-			fprintf(stderr, "handle START\n");
+			_clbptDebug( "isEmpty = %d\n", isEmpty);
+			_clbptDebug( "select COMPLETE\n");
+			_clbptDebug( "handle START\n");
 			_clbptHandleExecuteBuffer((clbpt_tree)tree);
-			fprintf(stderr, "handle COMPLETE\n");
+			_clbptDebug( "handle COMPLETE\n");
 		} while (isEmpty != 1);
 		((clbpt_tree)tree)->is_Complete = 1;
-		fprintf(stderr, "==========================================\n");
+		_clbptDebug( "==========================================\n");
 	}
 }
 
@@ -101,7 +101,7 @@ int _clbptBufferExchange(clbpt_tree tree)
 	void **result_buf_temp = tree->fetch_result_buf;
 	tree->fetch_result_buf = tree->wait_result_buf;
 	tree->wait_result_buf = result_buf_temp;
-	fprintf(stderr, "buffer exchange COMPLETE\n");
+	_clbptDebug( "buffer exchange COMPLETE\n");
 	//while (pthread_mutex_trylock(&tree->buffer_mutex) == 0)_clbptUnlockWaitBuffer(tree);
 	int err = _clbptUnlockWaitBuffer(tree);
 	tree->is_Complete = 0;
@@ -122,7 +122,7 @@ int clbptEnqueueFecthBuffer(
 	tree->fetch_buf[tree->fetch_buf_index] = packet;
 
 	// DEBUG
-	//fprintf(stderr, "%d\n", tree->fetch_buf_index);
+	//_clbptDebug( "%d\n", tree->fetch_buf_index);
 	tree->fetch_result_buf[tree->fetch_buf_index++] = records;
 	return CLBPT_SUCCESS;
 }
@@ -134,6 +134,7 @@ int clbptCreatePlatform(
 	cl_int err;
 	size_t cb;
 	clbpt_platform dst_platform;
+
 	dst_platform = malloc(sizeof(struct _clbpt_platform));
 	dst_platform->context = context;
 
@@ -279,7 +280,7 @@ int clbptFlush(clbpt_tree tree)
 
 int clbptFinish(clbpt_tree tree)
 {
-	fprintf(stderr,"Enter finish\n");
+	_clbptDebug("Enter finish\n");
 	while (!tree->is_Complete);
 	int err = clbptFlush(tree);
 	if (err != CLBPT_SUCCESS) return err;
