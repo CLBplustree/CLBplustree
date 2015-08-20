@@ -1,7 +1,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <windows.h>
+#include <unistd.h>
 #include <fcntl.h>
 #include <getopt.h>
 #include <ctime>
@@ -15,8 +15,6 @@
 #define VERBOSE(x) if(x)printf
 
 
-
-
 typedef struct
 {
 	int max;
@@ -25,7 +23,7 @@ typedef struct
 	int stddev;
 	int verbose;
 	int method;
-	FILE* output;
+	int output;
 	int insert_num;
 	int select_num;
 	int delete_num;
@@ -69,18 +67,19 @@ int main(int argc, char **argv)
 void ArgParse(int ArgNum, char **ArgStr)
 {
 	ArgStr[ArgNum+1]=NULL;
-	optset opts;
-    opts.max = 65535;
-    opts.min = 0;
-    opts.mean = 0;
-    opts.method = UNIFORM_METHOD;
-    opts.stddev = 0;
-    opts.verbose = 0;
-    opts.output = stdout;
-    opts.insert_num = 0;
-    opts.select_num = 0;
-    opts.delete_num = 0;
-
+	optset opts = 
+	{
+		.max = 65535,
+		.min = 0,
+		.mean = 0,
+		.method = UNIFORM_METHOD,
+		.stddev = 0,
+		.verbose = 0,
+		.output = STDOUT_FILENO,
+		.insert_num = 0,
+		.select_num = 0,
+		.delete_num = 0
+	};
 	while(1)
 	{
 		char arg;
@@ -106,7 +105,7 @@ void ArgParse(int ArgNum, char **ArgStr)
 				optmsg(&opts);
 			optcheck(&opts);
 			gendata(&opts);
-			if(opts.output!=stdout)fclose(opts.output);
+			if(opts.output!=STDOUT_FILENO)close(opts.output);
 			break;
 /*
 			ArgNum = 0;
@@ -135,19 +134,19 @@ void ArgParse(int ArgNum, char **ArgStr)
 				exit(0);
 			break;
 			case 'M' :
-				opts.max = atoi(optarg);
+				opts.max = atoi(optarg); 
 			break;
 			case 'm' :
-				opts.min = atoi(optarg);
+				opts.min = atoi(optarg); 
 			break;
 			case 'E' :
 				opts.method = str2method(optarg);
 			break;
 			case 'o' :
-				opts.output = fopen(optarg,"w+b");
+				if((opts.output = open(optarg,O_RDWR|O_CREAT|O_APPEND,0644))== -1)perror("open file error");
 			break;
 			case 'v' :
-				opts.verbose = 1;
+				opts.verbose = 1; 
 			break;
 			case 'i' :
 				opts.insert_num = atoi(optarg);
@@ -209,9 +208,9 @@ void optcheck(optset *opts)
 
 int str2method(char *str)
 {
-	if(!strcmp(str,"normal"))
+	if(!strcasecmp(str,"normal"))
 		return NORMAL_METHOD;
-	if(!strcmp(str,"uniform"))
+	if(!strcasecmp(str,"uniform"))
 		return UNIFORM_METHOD;
 	return UNKNOWN_METHOD;
 }
@@ -258,7 +257,7 @@ void VisualResult(outset *outbuf)
 	int num = outbuf->insert_num;
 	if( num < 10 )
 	{
-		fprintf(stderr,"Unable Visualize\n");
+		dprintf(STDERR_FILENO,"Unable Visualize\n");
 		return;
 	}
 	sort(buf,buf+num);
@@ -269,7 +268,7 @@ void VisualResult(outset *outbuf)
 		for( ; buf[i] < x ; i++ )
 		{
 			graph[j]++;
-		}
+		}	
 	}
 	for( int i = 0 ; i < 10 ; i++ )
 		printf("[%8d] ~ [%8d] %10d\n",buf[0]+i*interval/10,buf[0]+(i+1)*interval/10,graph[i]);
@@ -277,7 +276,6 @@ void VisualResult(outset *outbuf)
 
 outset *uniform_method(optset *opts)
 {
-    int type = 0;
 	int isz = opts->insert_num, ssz = opts->select_num, dsz = opts->delete_num;
 	outset *outbuf = (outset *)malloc(sizeof(outset));
 	outbuf->insertbuf = (int *)calloc(sizeof(int),opts->insert_num);
@@ -290,45 +288,22 @@ outset *uniform_method(optset *opts)
 	mt19937_64 gen(rd());
 	uniform_int_distribution<> dis(opts->min,opts->max);
 	VERBOSE(opts->verbose)("Generating %10d insert operations\n",isz);
-
-    if(opts->insert_num){
-            type = 1;
-            fwrite(&type,sizeof(int), 1,opts->output);
-            fwrite(&opts->insert_num,sizeof(int), 1,opts->output);
-    }
 	for( int i = 0 ; i < opts->insert_num ; i++ )
 	{
 		outbuf->insertbuf[i] = dis(gen);
-		fwrite(&outbuf->insertbuf[i],sizeof(int),1,opts->output);
-		//printf("%d key : %d.\n",i,outbuf->insertbuf[i]);
-	}
-	for( int i = 0 ; i < opts->insert_num ; i++ )
-	{
-		fwrite(&outbuf->insertbuf[i],sizeof(int),1,opts->output);
+		dprintf(opts->output,"i %d\n",outbuf->insertbuf[i]);
 	}
 	VERBOSE(opts->verbose)("Generating %10d select operations\n",ssz);
-
-    if(opts->insert_num){
-            type = 2;
-            fwrite(&type,sizeof(int), 1,opts->output);
-            fwrite(&opts->select_num,sizeof(int), 1,opts->output);
-    }
 	for( int i = 0 ; i < opts->select_num ; i++ )
 	{
 		outbuf->selectbuf[i] = dis(gen);
-		fwrite(&outbuf->selectbuf[i],sizeof(int),1,opts->output);
-		//printf("%d key : %d.\n",i,outbuf->selectbuf[i]);
+		dprintf(opts->output,"s %d\n",outbuf->selectbuf[i]);
 	}
 	VERBOSE(opts->verbose)("Generating %10d delete operations\n",dsz);
-	if(opts->delete_num)fprintf(opts->output,"%d%d",3,opts->delete_num);
 	for( int i = 0 ; i < opts->delete_num ; i++ )
 	{
 		outbuf->deletebuf[i] = dis(gen);
-		fprintf(opts->output,"%d",outbuf->deletebuf[i]);
-	}
-	for( int i = 0 ; i < opts->delete_num ; i++ )
-	{
-		fprintf(opts->output,"%d",outbuf->deletebuf[i]);
+		dprintf(opts->output,"d %d\n",outbuf->deletebuf[i]);
 	}
 	return outbuf;
 }
@@ -350,19 +325,19 @@ outset *normal_method(optset *opts)
 	for( int i = 0 ; i < opts->insert_num ; i++ )
 	{
 		outbuf->insertbuf[i] = dis(gen);
-		fprintf(opts->output,"i %d\n",outbuf->insertbuf[i]);
+		dprintf(opts->output,"i %d\n",outbuf->insertbuf[i]);
 	}
 	VERBOSE(opts->verbose)("Generating %10d select operations\n",ssz);
 	for( int i = 0 ; i < opts->select_num ; i++ )
 	{
 		outbuf->selectbuf[i] = dis(gen);
-		fprintf(opts->output,"s %d\n",outbuf->selectbuf[i]);
+		dprintf(opts->output,"s %d\n",outbuf->selectbuf[i]);
 	}
 	VERBOSE(opts->verbose)("Generating %10d delete operations\n",dsz);
 	for( int i = 0 ; i < opts->delete_num ; i++ )
 	{
 		outbuf->deletebuf[i] = dis(gen);
-		fprintf(opts->output,"d %d\n",outbuf->deletebuf[i]);
+		dprintf(opts->output,"d %d\n",outbuf->deletebuf[i]);
 	}
 	return outbuf;
 }
@@ -376,20 +351,20 @@ outset *random_method(optset *opts)
 	for(i=0;i<isz;i++)
 	{
 		outbuf->insertbuf[i] = (rand()%(opts->max-opts->min+1)+opts->min);
-		fprintf(opts->output,"i %d\n",outbuf->insertbuf[i] );
+		dprintf(opts->output,"i %d\n",outbuf->insertbuf[i] );
 		box[i] = outbuf->insertbuf[i] ;
 	}
 	VERBOSE(opts->verbose)("Generating %10d select operations\n",ssz);
 	for(i=0;i<ssz;i++)
 	{
 		outbuf->selectbuf[i]  = (rand()%isz);
-		fprintf(opts->output,"s %d\n",box[outbuf->selectbuf[i]]);
+		dprintf(opts->output,"s %d\n",box[outbuf->selectbuf[i]]);
 	}
 	VERBOSE(opts->verbose)("Generating %10d delete operations\n",dsz);
 	for(i=0;i<dsz;i++)
 	{
 		outbuf->deletebuf[i] = (rand()%isz);
-		fprintf(opts->output,"d %d\n",box[outbuf->deletebuf[i]]);
+		dprintf(opts->output,"d %d\n",box[outbuf->deletebuf[i]]);
 		box[outbuf->deletebuf[i]] = box[--isz];
 	}
 	return outbuf;

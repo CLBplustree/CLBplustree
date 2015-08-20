@@ -17,7 +17,7 @@
 #define CLBPT_RECORD_TYPE int
 
 // Temporary. Replace this by compiler option later.
-#define CLBPT_ORDER 128	// Should be less than or equal to half
+#define CLBPT_ORDER 4	// Should be less than or equal to half
 						// of MAX_LOCAL_SIZE
 
 //#define CLBPT_BUF_SIZE 65536

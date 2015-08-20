@@ -1,4 +1,4 @@
-﻿#include "clIndexedQueue.cl"
+#include "clIndexedQueue.cl"
 #include "kma.cl"
 
 // Temporary. Replace this by compiler option later.
