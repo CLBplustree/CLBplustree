@@ -11,6 +11,8 @@
 
 #define CLBPT_UNKNOWN_ERROR 5566
 
+int clbptDebug(const char* Format, ...);
+
 /**
  * @brief Create a new CLBPT platform.
  * @param dst_platform The platform.
