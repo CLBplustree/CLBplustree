@@ -203,7 +203,7 @@ int clbptEnqueueSearches(
 	clbpt_tree tree,
 	int num_keys,
 	CLBPT_KEY_TYPE *keys,
-	void *records)
+	void **record_list)
 {
 	int i, err;
 	for (i = 0; i < num_keys; i++)
@@ -211,7 +211,7 @@ int clbptEnqueueSearches(
 		err = clbptEnqueueFecthBuffer(
 			tree,
 			CLBPT_PACKET_SEARCH(keys[i]),
-			records);
+			record_list[i]);
 		if (err != CLBPT_SUCCESS) return err;
 	}
 	return CLBPT_SUCCESS;
