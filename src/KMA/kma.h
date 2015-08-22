@@ -50,7 +50,7 @@ extern cl_mem kma_create(cl_device_id dev, cl_context ctx, cl_command_queue cq,
 
 //<ADDED>
 extern int kma_create_svm(cl_device_id dev, cl_context ctx, cl_command_queue cq,
-		cl_program prg, unsigned int, void *host_ptr);
+		cl_program prg, unsigned int, void **host_ptr);
 //</ADDED>
 
 int clheap_execute(cl_device_id, cl_context, cl_command_queue,cl_program,

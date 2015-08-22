@@ -51,7 +51,7 @@ int clbptReleaseTree(clbpt_tree tree);
  * 					Hence, it reduces data copy and boosts the performance especially when record is large.
  * @return Error code.
  */
-int clbptEnqueueSearches(clbpt_tree tree, int num_keys, CLBPT_KEY_TYPE *keys, void *records);
+int clbptEnqueueSearches(clbpt_tree tree, int num_keys, CLBPT_KEY_TYPE *keys, void **record_list);
 
 /**
  * @brief Enqueue multiple range searches instruction.

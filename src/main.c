@@ -39,7 +39,7 @@ int main()
 	err = clGetPlatformIDs( 1, &platform_id, &ret_num_platforms );
 	err_check( err, "clGetPlatformIDs" );
  
-	err = clGetDeviceIDs( platform_id, CL_DEVICE_TYPE_CPU, 1, &device_id, &ret_num_devices );
+	err = clGetDeviceIDs( platform_id, CL_DEVICE_TYPE_GPU, 1, &device_id, &ret_num_devices );
 	err_check(err, "clGetDeviceIDs");
 	{
 		cl_device_svm_capabilities caps;
@@ -78,7 +78,7 @@ int main()
 #define CLBPT_RANGE_TYPE 4
 
 	FILE *input_data ;
-	if(fopen_s(&input_data,"C:\\Users\\mangoking\\Desktop\\CLBPTbench\\input","r+b"))printf("fuck\n");
+	if(input_data=fopen("input","r+b"))printf("fuck\n");
 	int bfsize = 128;
 	int *data_buffer = calloc(128, sizeof(int));
 	int *rec_buffer = calloc(128, sizeof(int));
@@ -120,7 +120,7 @@ int main()
 			for (i = 0; i < data_info[1]; i++){
 				printf("%d key : %d.\n", i, data_buffer[i]);
 			}
-			clbptEnqueueDeletions(t, data_info[1], data_buffer, rec_buffer);
+			clbptEnqueueDeletions(t, data_info[1], data_buffer);
 			break;
 		default: exit(-1);
 		}
@@ -140,7 +140,7 @@ int main()
 	}
 	return 0;
 	//===========================
-
+/*
 	int d[10] = { 7,21,24,23,14,15,16,17,18,19 };
 	int d_rec[10] = { 8,22,25,24,15,16,17,18,19,20 };
 	err = clbptEnqueueInsertions(t, 1, d, d_rec);
@@ -170,7 +170,6 @@ int main()
 	}
 	clbptFinish(t);
 	getchar();
-	///*
 	printf("============\n");
 
 	int b[2] = { 4,11 };
@@ -194,8 +193,6 @@ int main()
 	printf("============\n/");
 
 	
-	//*/
-/*
 	int b[3] = {2,4,0};
 	err = clbptEnqueueSearches(t, 3, b, NULL);
 	if (err != CL_SUCCESS)

@@ -141,7 +141,7 @@ _clbptWPacketSuperGroupHandler(
 	__global clbpt_del_pkt *del,
 	uint num_del,
 	__global struct clheap *heap,
-	bool aboveMirror
+	uint aboveMirror
 	);
 
 void
@@ -156,7 +156,7 @@ _clbptWPacketGroupHandler(
 	uint target_branch_index,
 	clbpt_int_node *target,
 	clbpt_int_node *sibling,
-	bool aboveMirror
+	uint aboveMirror
 	);
 
 void
@@ -857,7 +857,7 @@ _clbptWPacketSuperGroupHandler(
 	__global clbpt_del_pkt *del,
 	uint num_del,
 	__global struct clheap *heap,
-	bool aboveMirror
+	uint aboveMirror
 	)
 {
 	uint gid = get_global_id(0);
@@ -934,7 +934,7 @@ _clbptWPacketGroupHandler(
 	uint target_branch_index,
 	clbpt_int_node *target,
 	clbpt_int_node *sibling,
-	bool aboveMirror
+	uint aboveMirror
 	)
 {
 	uint gid = get_global_id(0);

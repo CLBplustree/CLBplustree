@@ -1,7 +1,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <windows.h>
+//#include <windows.h>
 #include <fcntl.h>
 #include <getopt.h>
 #include <ctime>
