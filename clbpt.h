@@ -47,11 +47,10 @@ int clbptReleaseTree(clbpt_tree tree);
  * @param tree The CLBPT.
  * @param num_keys Specify the number of input keys.
  * @param keys An array of query keys with size of num_keys.
- * @param records After search instructions complete, this array will be filled of pointers pointing to the record.
- * 					Hence, it reduces data copy and boosts the performance especially when record is large.
+ * @param records After search instructions complete, this array will be filled of records.
  * @return Error code.
  */
-int clbptEnqueueSearches(clbpt_tree tree, int num_keys, CLBPT_KEY_TYPE *keys, void *records);
+int clbptEnqueueSearches(clbpt_tree tree, int num_keys, CLBPT_KEY_TYPE *keys, void **record_list);
 
 /**
  * @brief Enqueue multiple range searches instruction.

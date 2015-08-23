@@ -120,9 +120,6 @@ int clbptEnqueueFecthBuffer(
 		clbptFinish(tree);
 	}
 	tree->fetch_buf[tree->fetch_buf_index] = packet;
-
-	// DEBUG
-	//_clbptDebug( "%d\n", tree->fetch_buf_index);
 	tree->fetch_result_buf[tree->fetch_buf_index++] = record_addr;
 	return CLBPT_SUCCESS;
 }
@@ -224,7 +221,7 @@ int clbptEnqueueSearches(
 				tree,
 				CLBPT_PACKET_SEARCH(keys[i]),
 				(void *)((int *)record_list + i));
-		else if (record_size == sizeof(double))
+		else if (tree->record_size == sizeof(double))
 			err = clbptEnqueueFecthBuffer(
 				tree,
 				CLBPT_PACKET_SEARCH(keys[i]),

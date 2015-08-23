@@ -14,7 +14,7 @@
 #endif
 
 #define CLBPT_KEY_TYPE int
-#define CLBPT_RECORD_TYPE int
+#define CLBPT_RECORD_TYPE void *
 
 // Temporary. Replace this by compiler option later.
 #define CLBPT_ORDER 128	// Should be less than or equal to half
