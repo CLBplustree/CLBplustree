@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file The front-end source file
  */
 
@@ -196,6 +196,37 @@ int clbptReleaseTree(clbpt_tree tree)
 	return CLBPT_SUCCESS;
 }
 
+int clbptCreatePairGroupList(
+	clbpt_pair_group_list *pair_group_list_ptr,
+	int num_pair_groups,
+	CLBPT_KEY_TYPE *l_keys,
+	CLBPT_KEY_TYPE *u_keys)
+{
+	int i;
+	clbpt_pair_group_list pair_group_list;
+
+	pair_group_list = calloc(sizeof(clbpt_pair_group), num_pair_groups);
+	for(i = 0; i < num_pair_groups; i++)
+	{
+		pair_group_list[i].pairs = calloc(sizeof(clbpt_pair), u_keys[i]-l_keys[i]+2);
+	}
+
+	*pair_group_list_ptr = pair_group_list;
+
+	return CLBPT_SUCCESS;
+}
+
+int clbptReleasePairGroupList(clbpt_pair_group_list *pair_group_list_ptr, int num_pair_groups)
+{
+	int i;
+
+	for(i = num_pair_groups-1; i >= 0; i--)
+	{
+		free((*pair_group_list_ptr)[i].pairs);
+	}
+	free(*pair_group_list_ptr);
+}
+
 int clbptEnqueueSearches(
 	clbpt_tree tree,
 	int num_keys,
@@ -236,7 +267,7 @@ int clbptEnqueueRangeSearches(
 	int num_keys,
 	CLBPT_KEY_TYPE *l_keys,
 	CLBPT_KEY_TYPE *u_keys,
-	void **record_list) 
+	clbpt_pair_group_list pair_group_list) 
 {
 	int i, err;
 	for (i = 0; i < num_keys; i++)
@@ -244,7 +275,7 @@ int clbptEnqueueRangeSearches(
 		err = clbptEnqueueFecthBuffer(
 			tree,
 			CLBPT_PACKET_RANGE(l_keys[i], u_keys[i]),
-			record_list[i]);
+			(void *)(pair_group_list+i));
 		if (err != CLBPT_SUCCESS) return err;
 	}
 	return CLBPT_SUCCESS;

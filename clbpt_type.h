@@ -53,7 +53,6 @@ typedef struct _clbpt_property {
 	uint32_t level;
 } clbpt_property;
 
-//typedef uint64_t clbpt_entry;
 typedef struct _clbpt_entry {
 	int32_t key;
 	uintptr_t child;
@@ -87,6 +86,20 @@ typedef struct _clbpt_leaf_node {
 	uint32_t parent_key;
 } clbpt_leaf_node;
 
+// The return (key, record) pairs of range searches
+typedef struct _clbpt_pair {
+	CLBPT_KEY_TYPE key;
+	CLBPT_RECORD_TYPE record;
+} clbpt_pair;
+
+typedef struct _clbpt_pair_group {
+	int num_pairs;
+	clbpt_pair *pairs;
+} clbpt_pair_group;
+
+typedef clbpt_pair_group *clbpt_pair_group_list;
+
+// Packets to internal node
 typedef struct _clbpt_ins_pkt {
 	clbpt_int_node *target;
 	clbpt_entry entry;
@@ -97,6 +110,7 @@ typedef struct _clbpt_del_pkt {
 	int32_t key;
 } clbpt_del_pkt;
 
+// Packets to leaf node
 typedef	uint64_t clbpt_packet;
 
 typedef struct _clbpt_platform *clbpt_platform;

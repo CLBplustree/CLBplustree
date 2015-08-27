@@ -19,7 +19,7 @@ int handle_node(clbpt_tree tree, void *node_addr, void *leftmost_node_addr);
 int handle_leftmost_node(clbpt_tree tree, clbpt_leaf_node *node);
 
 int search_leaf(int32_t key, void *node_addr, void *result_addr, size_t record_size);
-int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_addr);
+int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_addr, , size_t record_size);
 int insert_leaf(int32_t key, void *node_addr, void *record, size_t record_size);
 int delete_leaf(int32_t key, void *node_addr);
 
@@ -514,7 +514,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 		else if (isRangePacket(pkt))
 		{
 			key_upper = getUpperKeyFromRangePacket(pkt);
-			tree->instr_result_buf[i] = range_leaf(key, key_upper, node_addr, tree->execute_result_buf[i]);
+			tree->instr_result_buf[i] = range_leaf(key, key_upper, node_addr, tree->execute_result_buf[i], tree->record_size);
 		}
 		else if (isInsertPacket(pkt))
 		{
@@ -929,7 +929,7 @@ int search_leaf(int32_t key, void *node_addr, void *result_addr, size_t record_s
 	return existed;
 }
 
-int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_addr)
+int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_addr, size_t record_size)
 {
 	int i, j, num_records = 0;
 	clbpt_leaf_node *node = node_addr;
@@ -960,6 +960,28 @@ int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_add
 
 	if (num_records > 0)
 	{
+		((clbpt_pair_group *)result_addr)->num_pairs = num_records;
+
+		_clbptDebug( "RANGE [%d, %d] FOUND:\n", key, key_upper);
+		for(entry = start, i = 0; i < num_records; entry = entry->next, i++)
+		{
+			((clbpt_pair_group *)result_addr)->pairs[i].key = entry->key;
+			memcpy(&((clbpt_pair_group_list)result_addr)->pairs[i].record, entry->record_ptr, record_size);
+			switch (record_size)
+			{
+				case sizeof(char):
+					_clbptDebug( "\t(key: %d, record: %c)\n", entry->key, *((char *)entry->record_ptr));
+					break;
+				case sizeof(int):
+					_clbptDebug( "\t(key: %d, record: %d)\n", entry->key, *((int *)entry->record_ptr));
+					break;
+				case sizeof(double):
+					_clbptDebug( "\t(key: %d, record: %lf)\n", entry->key, *((double *)entry->record_ptr));
+					break;
+				default:
+					break;
+			}
+		}
 		/*
 		result_addr = (void *)malloc(sizeof(void *) * (num_records+1));
 		((int *)result_addr)[0] = num_records;
@@ -974,8 +996,8 @@ int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_add
 	}
 	else
 	{
-		result_addr = NULL;
-		_clbptDebug( "RANGE NOT FOUND: nothing is inside the range[%d, %d]\n", start->key, end->key);
+		((clbpt_pair_group *)result_addr)->num_pairs = 0;
+		_clbptDebug( "RANGE [%d, %d] NOT FOUND:\n", key, key_upper);
 	}
 
 	return num_records;

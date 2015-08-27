@@ -23,7 +23,7 @@ int clbptCreatePlatform(clbpt_platform *dst_platform_ptr, cl_context context);
 
 /**
  * @brief Create a new CLBPT.
- * @param dst_tree The B+tree.
+ * @param dst_tree_ptr The address of B+tree.
  * @param platform CLBPT platform.
  * @param order The order of the B+tree. 0 for maximum available order.
  * @param record_size The size of record in byte.
@@ -37,6 +37,24 @@ int clbptCreateTree(clbpt_tree *dst_tree_ptr, clbpt_platform platform, const int
  * @return Error code.
  */
 int clbptReleaseTree(clbpt_tree tree);
+
+/**
+ * @brief Create a pair group list.
+ * @param pair_group_list_ptr The address of pair group list.
+ * @param num_pair_groups The number of pair groups for result of range searches.
+ * @param l_keys The array of lower keys.
+ * @param u_keys The array of upper keys.
+ * @return Error code.
+ */
+int clbptCreatePairGroupList(clbpt_pair_group_list *pair_group_list_ptr, int num_pair_groups, CLBPT_KEY_TYPE *l_keys, CLBPT_KEY_TYPE *u_keys);
+
+/**
+ * @brief Release the pair group list.
+ * @param pair_group_list_ptr The address of pair group list.
+ * @param num_pair_groups The number of pair groups for result of range searches.
+ * @return Error code.
+ */
+int clbptReleasePairGroupList(clbpt_pair_group_list *pair_group_list_ptr, int num_pair_groups);
 
 /**
  * @brief Enqueue multiple searches instruction.
