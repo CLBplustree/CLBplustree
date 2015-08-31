@@ -19,7 +19,7 @@ int handle_node(clbpt_tree tree, void *node_addr, void *leftmost_node_addr);
 int handle_leftmost_node(clbpt_tree tree, clbpt_leaf_node *node);
 
 int search_leaf(int32_t key, void *node_addr, void *result_addr, size_t record_size);
-int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_addr, , size_t record_size);
+int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_addr, size_t record_size);
 int insert_leaf(int32_t key, void *node_addr, void *record, size_t record_size);
 int delete_leaf(int32_t key, void *node_addr);
 

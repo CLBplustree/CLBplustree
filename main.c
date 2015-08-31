@@ -30,7 +30,7 @@ int main()
 	cl_device_id arr[5];
 	printf("size of device id: %lu\n",sizeof(cl_device_id));
 	printf("size of cl_int: %lu\n",sizeof(cl_int));
- 
+
 	float mat_a[ MAT_SIZE ];
 	for ( cl_int i = 0; i < MAT_SIZE; i++ ) {
 		mat_a[i] = i;
@@ -82,6 +82,7 @@ int main()
 	int bfsize = 128;
 	int *data_buffer = calloc(128, sizeof(int));
 	int *rec_buffer = calloc(128, sizeof(int));
+	clbpt_pair_group_list pg_list;
 	time_t start_time;
 	time_t end_time;
 	while(1){
@@ -121,6 +122,11 @@ int main()
 				printf("%d key : %d.\n", i, data_buffer[i]);
 			}
 			clbptEnqueueDeletions(t, data_info[1], data_buffer, rec_buffer);
+			break;
+		case  CLBPT_RANGE_TYPE:
+			//clbptCreatePairGroupList(&pg_list, data_info[1], l_keys, u_keys);
+			//clbptEnqueueRangeSearches(t, data_info[1], l_keys, u_keys, pg_list);
+			//clbptReleasePairGroupList(&pg_list, data_info[1]);
 			break;
 		default: exit(-1);
 		}
