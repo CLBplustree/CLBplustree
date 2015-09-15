@@ -36,7 +36,7 @@ void _clbptLoadProgram(clbpt_platform platform, char *filename)
 		_clbptDebug( "error load program : %d\n", err);
 	if (platform->program == NULL)
 		_clbptDebug( "error load program\n");
-	if ((err = clBuildProgram(platform->program, 1, platform->devices, "-cl-std=CL2.0 -cl-opt-disable -I . -I include/ -I /home/mangohot/git/CLBplustree/KMA-master/  -I /opt/AMDAPPSDK-3.0-0-Beta/include/ -I /usr/include/linux/ -I /usr/include/x86_64-linux-gnu/", 0, 0)) != CL_SUCCESS)
+	if ((err = clBuildProgram(platform->program, 1, platform->devices, "-cl-std=CL2.0 -I src/ -I src/KMA ", 0, 0)) != CL_SUCCESS)
 	{
 		size_t len;
 		char *buffer;

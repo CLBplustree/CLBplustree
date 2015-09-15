@@ -92,7 +92,6 @@ typedef struct _clbpt_leafmirror {
 #define isNopWPacket(X) ((X).target == 0)
 #define getKeyFromWPacket(X) (int)(((X).key << 1) & 0x80000000 | (X).key & 0x7FFFFFFF)
 */
-
 __kernel void
 _clbptWPacketBufferHandler(
         __global clbpt_ins_pkt *ins,
@@ -183,7 +182,6 @@ _clbptWPacketBufferPreRootHandler(
 	property->root = (uintptr_t)new_root;
 	property->level += 1;
 }
-
 __kernel void
 _clbptPacketSort(
 			__global clbpt_packet *execute,
@@ -567,6 +565,7 @@ _clbptSearch(
  */
 __kernel void
 _clbptWPacketInit(
+
 	__global clbpt_ins_pkt *ins,
 	__global cpu_address_t *addr,
 	__global uintptr_t *leafmirror_addr,
@@ -647,11 +646,14 @@ _clbptWPacketBufferHandler(
 	uint num_ins_sgroup, num_del_sgroup;
 	uint is_in_sgroup;
 	uintptr_t cur_parent;
+	/*
 	clk_event_t *level_bar;
+	*/
 	int num_kernel = 0;
 
 	ins_begin = 0;
 	del_begin = 0;
+	/*
 	if (gid == 0) {
 		if (num_ins > num_del) {
 			level_bar = (clk_event_t *)
@@ -662,6 +664,7 @@ _clbptWPacketBufferHandler(
 				malloc(heap, num_del * sizeof(clk_event_t));
 		}
 	}
+	*/
 	while (ins_begin != num_ins || del_begin != num_del) {
 		// Define cur_target
 		if (gid == 0) {
@@ -711,7 +714,7 @@ _clbptWPacketBufferHandler(
 		num_del_sgroup = work_group_reduce_add(is_in_sgroup);
 		// Enqueue super group handler
 		if (gid == 0) {
-			
+			/*	
 			enqueue_kernel(
 				get_default_queue(),
 				CLK_ENQUEUE_FLAGS_NO_WAIT,
@@ -731,6 +734,26 @@ _clbptWPacketBufferHandler(
 					);
 				 },
 				2 * CLBPT_ORDER * sizeof(clbpt_entry)
+			);*/
+			enqueue_kernel(
+				get_default_queue(),
+				CLK_ENQUEUE_FLAGS_NO_WAIT,
+				ndrange_1D(2 * CLBPT_ORDER, 2 * CLBPT_ORDER),
+				0,
+				(clk_event_t *)NULL,
+				NULL,
+				^(__local void *proc_list){
+					_clbptWPacketSuperGroupHandler(
+						proc_list,
+						ins + ins_begin,
+						num_ins_sgroup,
+						del + del_begin,
+						num_del_sgroup,
+						heap,
+						level_proc == property->level - 2
+					);
+				},
+				2 * CLBPT_ORDER * sizeof(clbpt_entry)
 			);
 			
 		}
@@ -738,7 +761,22 @@ _clbptWPacketBufferHandler(
 		del_begin += num_del_sgroup;
 	}	
 	if (gid == 0) {
+		clk_event_t level_bar;
+
+		enqueue_marker(get_default_queue(), 0, NULL, &level_bar);
 		enqueue_kernel(
+			get_default_queue(),
+			CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
+			ndrange_1D(MAX_LOCAL_SIZE, MAX_LOCAL_SIZE),
+			1,
+			&level_bar,
+			NULL,
+			^{
+				_clbptWPacketCompact(ins, num_ins, del, num_del, heap,
+					property, level_proc);
+			 }
+		);
+		/*enqueue_kernel(
 			get_default_queue(),
 			CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
 			ndrange_1D(MAX_LOCAL_SIZE, MAX_LOCAL_SIZE),
@@ -749,8 +787,8 @@ _clbptWPacketBufferHandler(
 				_clbptWPacketCompact(ins, num_ins, del, num_del, heap,
 					property, level_proc);
 			 }
-		);
-		free(heap, level_bar);
+		);*/
+		//free(heap, level_bar);
 	}
 }
 
@@ -760,6 +798,7 @@ _clbptWPacketCompact(
 	uint num_ins,
 	__global clbpt_del_pkt *del,
 	uint num_del,
+
 	__global struct clheap *heap,
 	__global clbpt_property *property,
 	uint level_proc_old
@@ -779,7 +818,10 @@ _clbptWPacketCompact(
 	{
 		uint old_ins_i = old_ins_i_base + gid;
 		if (old_ins_i < num_ins) {
-			valid = isWPacketValid(ins_proc = ins[old_ins_i]);
+			/// AMD DRIVER BUG
+			//ins_proc = ins[old_ins_i];
+			//valid = (ins_proc.target != NULL) ? 1 : 0;
+			/// End of BUG
 		}
 		else {
 			valid = 0;
@@ -869,16 +911,20 @@ _clbptWPacketSuperGroupHandler(
 	uint target_branch_index;
 	clbpt_int_node *parent;
 	clbpt_int_node *sibling = 0;
-	
+		
 	ins_begin = 0;
 	del_begin = 0;
 	if (num_ins > 0) {
-		parent = (clbpt_int_node *)
-			(((clbpt_int_node *)(ins[0].target))->parent);
+		/// AMD DRIVER BUG
+		//parent = (clbpt_int_node *)
+		//(((clbpt_int_node *)(ins[0].target))->parent);
+		/// END OF BUG
 	}
 	else {
-		parent = (clbpt_int_node *)
-			(((clbpt_int_node *)(del[0].target))->parent);
+		/// AMD DRIVER BUG
+		//parent = (clbpt_int_node *)
+		//(((clbpt_int_node *)(del[0].target))->parent);
+		/// END OF BUG
 	}
 	for (target_branch_index = 0; target_branch_index < parent->num_entry;
 		target_branch_index++)
