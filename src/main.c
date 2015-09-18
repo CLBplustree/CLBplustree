@@ -5,6 +5,12 @@
 #include "clbpt.h"
  
 #define MAT_SIZE 15
+
+extern void
+_clbptPrintTree(
+	clbpt_property *property,
+	size_t record_size
+	);
  
 void err_check( int err, char *err_code ) {
 	if ( err != CL_SUCCESS ) {
@@ -39,7 +45,7 @@ int main()
 	err = clGetPlatformIDs( 1, &platform_id, &ret_num_platforms );
 	err_check( err, "clGetPlatformIDs" );
  
-	err = clGetDeviceIDs( platform_id, CL_DEVICE_TYPE_CPU, 1, &device_id, &ret_num_devices );
+	err = clGetDeviceIDs( platform_id, CL_DEVICE_TYPE_GPU, 1, &device_id, &ret_num_devices );
 	err_check(err, "clGetDeviceIDs");
 	{
 		cl_device_svm_capabilities caps;
@@ -76,9 +82,8 @@ int main()
 #define CLBPT_SEARCH_TYPE 2
 #define CLBPT_DELETE_TYPE 3
 #define CLBPT_RANGE_TYPE 4
-
 	FILE *input_data ;
-	if(fopen_s(&input_data,"C:\\Users\\mangoking\\Desktop\\CLBPTbench\\input","r+b"))printf("fuck\n");
+	if(input_data=fopen("input","r+b"))printf("fuck\n");
 	int bfsize = 128;
 	int *data_buffer = calloc(128, sizeof(int));
 	int *rec_buffer = calloc(128, sizeof(int));
@@ -121,7 +126,7 @@ int main()
 			for (i = 0; i < data_info[1]; i++){
 				printf("%d key : %d.\n", i, data_buffer[i]);
 			}
-			clbptEnqueueDeletions(t, data_info[1], data_buffer, rec_buffer);
+			clbptEnqueueDeletions(t, data_info[1], data_buffer);
 			break;
 		case  CLBPT_RANGE_TYPE:
 			//clbptCreatePairGroupList(&pg_list, data_info[1], l_keys, u_keys);
@@ -142,11 +147,12 @@ int main()
 				printf("key(%d) : %d\n", i, rec_buffer[i]);
 		time(&end_time);
 		int delay = difftime(end_time, start_time);
+		_clbptPrintTree(t->property, t->record_size);
 		printf("Cost time : %d seconds\n",delay);
 	}
 	return 0;
 	//===========================
-
+	/*
 	int d[10] = { 7,21,24,23,14,15,16,17,18,19 };
 	int d_rec[10] = { 8,22,25,24,15,16,17,18,19,20 };
 	err = clbptEnqueueInsertions(t, 1, d, d_rec);
@@ -168,7 +174,6 @@ int main()
 	}
 	clbptFinish(t);
 	getchar();
-
 	err = clbptEnqueueDeletions(t, 3, a, NULL);
 	if (err != CL_SUCCESS)
 	{
@@ -176,7 +181,6 @@ int main()
 	}
 	clbptFinish(t);
 	getchar();
-	///*
 	printf("============\n");
 
 	int b[2] = { 4,11 };
@@ -199,17 +203,8 @@ int main()
 	clbptFinish(t);
 	printf("============\n/");
 
+	*/
 	
-	//*/
-/*
-	int b[3] = {2,4,0};
-	err = clbptEnqueueSearches(t, 3, b, NULL);
-	if (err != CL_SUCCESS)
-	{
-		fprintf(stderr, "EnqueSearches ERROR\n");
-	}
-	clbptFlush(t);
-*/
 	printf("haha\n"); 
 	//err = clFlush( command_queue );
 	//err = clFinish( command_queue );

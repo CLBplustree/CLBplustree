@@ -132,7 +132,9 @@ _kma_create_64_svm(cl_context ctx, cl_command_queue cq, unsigned int sblocks, vo
 	struct kma_heap_64 localHeap;
 
 	localHeap.bytes = (sblocks * KMA_SB_SIZE) + (sizeof(struct kma_heap_64));
-	*host_ptr = clSVMAlloc(ctx, CL_MEM_READ_WRITE, localHeap.bytes, 0);
+	*host_ptr = clSVMAlloc(ctx, 
+		CL_MEM_READ_WRITE | CL_MEM_SVM_FINE_GRAIN_BUFFER | CL_MEM_SVM_ATOMICS, 
+		localHeap.bytes, 0);
 	if(*host_ptr == NULL) {
 		printf("KMA: Could not allocate heap on-device\n");
 		return (cl_mem) 0;
@@ -229,4 +231,3 @@ kma_create_svm(cl_device_id dev, cl_context ctx, cl_command_queue cq,
 
 	return CL_SUCCESS;
 }
-//</ADDED>

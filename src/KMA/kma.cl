@@ -314,9 +314,11 @@ free(__global struct clheap *heap, uintptr_t block)
 	bool enq;
 	volatile unsigned int __global *abits_ptr;
 	volatile unsigned int __global *b = (volatile unsigned int __global *) block;
-
-	if(block == NULL)
-		return;
+	
+	/// AMD DRIVER BUG
+	//if(block == NULL)
+	//	return;
+	/// END OF BUG
 
 	/* Find superblock */
 	first_sb = ((uintptr_t) heap + sizeof(struct clheap));

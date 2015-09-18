@@ -86,7 +86,7 @@ int clbptEnqueueSearches(clbpt_tree tree, int num_keys, CLBPT_KEY_TYPE *keys, vo
  * @param record_list After search instructions complete, this array will be filled of lists consisting of record pointers.
  * @return Error code.
  */
-int clbptEnqueueRangeSearches(clbpt_tree tree, int num_keys, CLBPT_KEY_TYPE *l_keys, CLBPT_KEY_TYPE *u_keys, void **record_list);
+int clbptEnqueueRangeSearches(clbpt_tree tree, int num_keys, CLBPT_KEY_TYPE *l_keys, CLBPT_KEY_TYPE *u_keys, clbpt_pair_group_list pair_group_list);
 
 /**
  * @brief Enqueue multiple insertions instruction.
