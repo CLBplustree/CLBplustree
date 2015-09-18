@@ -4,7 +4,7 @@
 // Temporary. Replace this by compiler option later.
 #define CLBPT_ORDER 128		// Should be less than or equal to half
 							// of MAX_LOCAL_SIZE
-#define CPU_BITNESS 32
+#define CPU_BITNESS 64 
 #define MAX_LOCAL_SIZE 256
 
 #if CPU_BITNESS == 32
@@ -38,12 +38,12 @@ typedef struct _clbpt_wpacket {
 */
 
 typedef struct _clbpt_ins_pkt {
-	clbpt_int_node *target;
+	uintptr_t target;
 	clbpt_entry entry;
 } clbpt_ins_pkt;
 
 typedef struct _clbpt_del_pkt {
-	clbpt_int_node *target;
+	uintptr_t target;
 	clbpt_key key;
 } clbpt_del_pkt;
 
@@ -92,7 +92,6 @@ typedef struct _clbpt_leafmirror {
 #define isNopWPacket(X) ((X).target == 0)
 #define getKeyFromWPacket(X) (int)(((X).key << 1) & 0x80000000 | (X).key & 0x7FFFFFFF)
 */
-
 __kernel void
 _clbptWPacketBufferHandler(
         __global clbpt_ins_pkt *ins,
@@ -141,7 +140,7 @@ _clbptWPacketSuperGroupHandler(
 	__global clbpt_del_pkt *del,
 	uint num_del,
 	__global struct clheap *heap,
-	bool aboveMirror
+	uint aboveMirror
 	);
 
 void
@@ -156,7 +155,7 @@ _clbptWPacketGroupHandler(
 	uint target_branch_index,
 	clbpt_int_node *target,
 	clbpt_int_node *sibling,
-	bool aboveMirror
+	uint aboveMirror
 	);
 
 void
@@ -183,7 +182,6 @@ _clbptWPacketBufferPreRootHandler(
 	property->root = (uintptr_t)new_root;
 	property->level += 1;
 }
-
 __kernel void
 _clbptPacketSort(
 			__global clbpt_packet *execute,
@@ -567,6 +565,7 @@ _clbptSearch(
  */
 __kernel void
 _clbptWPacketInit(
+
 	__global clbpt_ins_pkt *ins,
 	__global cpu_address_t *addr,
 	__global uintptr_t *leafmirror_addr,
@@ -647,11 +646,14 @@ _clbptWPacketBufferHandler(
 	uint num_ins_sgroup, num_del_sgroup;
 	uint is_in_sgroup;
 	uintptr_t cur_parent;
+	/*
 	clk_event_t *level_bar;
+	*/
 	int num_kernel = 0;
 
 	ins_begin = 0;
 	del_begin = 0;
+	/*
 	if (gid == 0) {
 		if (num_ins > num_del) {
 			level_bar = (clk_event_t *)
@@ -662,29 +664,30 @@ _clbptWPacketBufferHandler(
 				malloc(heap, num_del * sizeof(clk_event_t));
 		}
 	}
+	*/
 	while (ins_begin != num_ins || del_begin != num_del) {
 		// Define cur_target
 		if (gid == 0) {
 			if (ins_begin == num_ins) {
-				cur_parent = del[del_begin].target->parent;
+				cur_parent = ((clbpt_int_node *)del[del_begin].target)->parent;
 			}
 			else if (del_begin == num_del) {
-				cur_parent = ins[ins_begin].target->parent;
+				cur_parent = ((clbpt_int_node *)ins[ins_begin].target)->parent;
 			}
 			else if (getKey(ins[ins_begin].entry.key) <
 				getKey(del[del_begin].key))
 			{
-				cur_parent = ins[ins_begin].target->parent;
+				cur_parent = ((clbpt_int_node *)ins[ins_begin].target)->parent;
 			}
 			else {
-				cur_parent = del[del_begin].target->parent;
+				cur_parent = ((clbpt_int_node *)del[del_begin].target)->parent;
 			}
 		}
 		work_group_barrier(0);
 		cur_parent = work_group_broadcast(cur_parent, 0);
 		// Find siblings in ins and del
 		if (ins_begin + gid < num_ins) {
-			if (ins[ins_begin + gid].target->parent == cur_parent) {
+			if (((clbpt_int_node *)ins[ins_begin + gid].target)->parent == cur_parent) {
 				is_in_sgroup = 1;
 			}
 			else {
@@ -697,7 +700,7 @@ _clbptWPacketBufferHandler(
 		work_group_barrier(0);
 		num_ins_sgroup = work_group_reduce_add(is_in_sgroup);
 		if (del_begin + gid < num_del) {
-			if (del[del_begin + gid].target->parent == cur_parent) {
+			if (((clbpt_int_node *)del[del_begin + gid].target)->parent == cur_parent) {
 				is_in_sgroup = 1;
 			}
 			else {
@@ -711,7 +714,7 @@ _clbptWPacketBufferHandler(
 		num_del_sgroup = work_group_reduce_add(is_in_sgroup);
 		// Enqueue super group handler
 		if (gid == 0) {
-			
+			/*	
 			enqueue_kernel(
 				get_default_queue(),
 				CLK_ENQUEUE_FLAGS_NO_WAIT,
@@ -731,6 +734,26 @@ _clbptWPacketBufferHandler(
 					);
 				 },
 				2 * CLBPT_ORDER * sizeof(clbpt_entry)
+			);*/
+			enqueue_kernel(
+				get_default_queue(),
+				CLK_ENQUEUE_FLAGS_NO_WAIT,
+				ndrange_1D(2 * CLBPT_ORDER, 2 * CLBPT_ORDER),
+				0,
+				(clk_event_t *)NULL,
+				NULL,
+				^(__local void *proc_list){
+					_clbptWPacketSuperGroupHandler(
+						proc_list,
+						ins + ins_begin,
+						num_ins_sgroup,
+						del + del_begin,
+						num_del_sgroup,
+						heap,
+						level_proc == property->level - 2
+					);
+				},
+				2 * CLBPT_ORDER * sizeof(clbpt_entry)
 			);
 			
 		}
@@ -738,7 +761,22 @@ _clbptWPacketBufferHandler(
 		del_begin += num_del_sgroup;
 	}	
 	if (gid == 0) {
+		clk_event_t level_bar;
+
+		enqueue_marker(get_default_queue(), 0, NULL, &level_bar);
 		enqueue_kernel(
+			get_default_queue(),
+			CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
+			ndrange_1D(MAX_LOCAL_SIZE, MAX_LOCAL_SIZE),
+			1,
+			&level_bar,
+			NULL,
+			^{
+				_clbptWPacketCompact(ins, num_ins, del, num_del, heap,
+					property, level_proc);
+			 }
+		);
+		/*enqueue_kernel(
 			get_default_queue(),
 			CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
 			ndrange_1D(MAX_LOCAL_SIZE, MAX_LOCAL_SIZE),
@@ -749,8 +787,8 @@ _clbptWPacketBufferHandler(
 				_clbptWPacketCompact(ins, num_ins, del, num_del, heap,
 					property, level_proc);
 			 }
-		);
-		free(heap, level_bar);
+		);*/
+		//free(heap, level_bar);
 	}
 }
 
@@ -760,6 +798,7 @@ _clbptWPacketCompact(
 	uint num_ins,
 	__global clbpt_del_pkt *del,
 	uint num_del,
+
 	__global struct clheap *heap,
 	__global clbpt_property *property,
 	uint level_proc_old
@@ -779,7 +818,10 @@ _clbptWPacketCompact(
 	{
 		uint old_ins_i = old_ins_i_base + gid;
 		if (old_ins_i < num_ins) {
-			valid = isWPacketValid(ins_proc = ins[old_ins_i]);
+			/// AMD DRIVER BUG
+			ins_proc = ins[old_ins_i];
+			valid = (ins_proc.target != NULL) ? 1 : 0;
+			/// End of BUG
 		}
 		else {
 			valid = 0;
@@ -857,7 +899,7 @@ _clbptWPacketSuperGroupHandler(
 	__global clbpt_del_pkt *del,
 	uint num_del,
 	__global struct clheap *heap,
-	bool aboveMirror
+	uint aboveMirror
 	)
 {
 	uint gid = get_global_id(0);
@@ -869,16 +911,20 @@ _clbptWPacketSuperGroupHandler(
 	uint target_branch_index;
 	clbpt_int_node *parent;
 	clbpt_int_node *sibling = 0;
-	
+		
 	ins_begin = 0;
 	del_begin = 0;
 	if (num_ins > 0) {
-		parent = (clbpt_int_node *)
-			(((clbpt_int_node *)(ins[0].target))->parent);
+		/// AMD DRIVER BUG
+		//parent = (clbpt_int_node *)
+		//(((clbpt_int_node *)(ins[0].target))->parent);
+		/// END OF BUG
 	}
 	else {
-		parent = (clbpt_int_node *)
-			(((clbpt_int_node *)(del[0].target))->parent);
+		/// AMD DRIVER BUG
+		//parent = (clbpt_int_node *)
+		//(((clbpt_int_node *)(del[0].target))->parent);
+		/// END OF BUG
 	}
 	for (target_branch_index = 0; target_branch_index < parent->num_entry;
 		target_branch_index++)
@@ -934,7 +980,7 @@ _clbptWPacketGroupHandler(
 	uint target_branch_index,
 	clbpt_int_node *target,
 	clbpt_int_node *sibling,
-	bool aboveMirror
+	uint aboveMirror
 	)
 {
 	uint gid = get_global_id(0);

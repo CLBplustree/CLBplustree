@@ -246,6 +246,7 @@ int _clbptInitialize(clbpt_tree tree)
 	// kernel _clbptInitialize
 	kernel = kernels[CLBPT_INITIALIZE];
 	err = clSetKernelArg(kernel, 0, sizeof(tree->property->root), (void *)&tree->property->root);
+	fprintf(stderr, "%d\n", err);
 	assert(err == CL_SUCCESS);
 	err = clSetKernelArg(kernel, 1, sizeof(tree->property_d), (void *)&tree->property_d);
 	assert(err == CL_SUCCESS);
