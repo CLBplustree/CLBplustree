@@ -4,7 +4,7 @@
 // Temporary. Replace this by compiler option later.
 #define CLBPT_ORDER 128		// Should be less than or equal to half
 							// of MAX_LOCAL_SIZE
-#define CPU_BITNESS 32
+#define CPU_BITNESS 64 
 #define MAX_LOCAL_SIZE 256
 
 #if CPU_BITNESS == 32
@@ -38,12 +38,12 @@ typedef struct _clbpt_wpacket {
 */
 
 typedef struct _clbpt_ins_pkt {
-	clbpt_int_node *target;
+	uintptr_t target;
 	clbpt_entry entry;
 } clbpt_ins_pkt;
 
 typedef struct _clbpt_del_pkt {
-	clbpt_int_node *target;
+	uintptr_t target;
 	clbpt_key key;
 } clbpt_del_pkt;
 
@@ -669,25 +669,25 @@ _clbptWPacketBufferHandler(
 		// Define cur_target
 		if (gid == 0) {
 			if (ins_begin == num_ins) {
-				cur_parent = del[del_begin].target->parent;
+				cur_parent = ((clbpt_int_node *)del[del_begin].target)->parent;
 			}
 			else if (del_begin == num_del) {
-				cur_parent = ins[ins_begin].target->parent;
+				cur_parent = ((clbpt_int_node *)ins[ins_begin].target)->parent;
 			}
 			else if (getKey(ins[ins_begin].entry.key) <
 				getKey(del[del_begin].key))
 			{
-				cur_parent = ins[ins_begin].target->parent;
+				cur_parent = ((clbpt_int_node *)ins[ins_begin].target)->parent;
 			}
 			else {
-				cur_parent = del[del_begin].target->parent;
+				cur_parent = ((clbpt_int_node *)del[del_begin].target)->parent;
 			}
 		}
 		work_group_barrier(0);
 		cur_parent = work_group_broadcast(cur_parent, 0);
 		// Find siblings in ins and del
 		if (ins_begin + gid < num_ins) {
-			if (ins[ins_begin + gid].target->parent == cur_parent) {
+			if (((clbpt_int_node *)ins[ins_begin + gid].target)->parent == cur_parent) {
 				is_in_sgroup = 1;
 			}
 			else {
@@ -700,7 +700,7 @@ _clbptWPacketBufferHandler(
 		work_group_barrier(0);
 		num_ins_sgroup = work_group_reduce_add(is_in_sgroup);
 		if (del_begin + gid < num_del) {
-			if (del[del_begin + gid].target->parent == cur_parent) {
+			if (((clbpt_int_node *)del[del_begin + gid].target)->parent == cur_parent) {
 				is_in_sgroup = 1;
 			}
 			else {
@@ -819,8 +819,8 @@ _clbptWPacketCompact(
 		uint old_ins_i = old_ins_i_base + gid;
 		if (old_ins_i < num_ins) {
 			/// AMD DRIVER BUG
-			//ins_proc = ins[old_ins_i];
-			//valid = (ins_proc.target != NULL) ? 1 : 0;
+			ins_proc = ins[old_ins_i];
+			valid = (ins_proc.target != NULL) ? 1 : 0;
 			/// End of BUG
 		}
 		else {

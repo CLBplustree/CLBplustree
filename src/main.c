@@ -76,7 +76,7 @@ int main()
 #define CLBPT_SEARCH_TYPE 2
 #define CLBPT_DELETE_TYPE 3
 #define CLBPT_RANGE_TYPE 4
-
+	/*
 	FILE *input_data ;
 	if(input_data=fopen("input","r+b"))printf("fuck\n");
 	int bfsize = 128;
@@ -138,9 +138,9 @@ int main()
 		int delay = difftime(end_time, start_time);
 		printf("Cost time : %d seconds\n",delay);
 	}
-	return 0;
+	return 0;*/
 	//===========================
-/*
+
 	int d[10] = { 7,21,24,23,14,15,16,17,18,19 };
 	int d_rec[10] = { 8,22,25,24,15,16,17,18,19,20 };
 	err = clbptEnqueueInsertions(t, 1, d, d_rec);
@@ -163,7 +163,7 @@ int main()
 	clbptFinish(t);
 	getchar();
 
-	err = clbptEnqueueDeletions(t, 3, a, NULL);
+	err = clbptEnqueueDeletions(t, 3, a);
 	if (err != CL_SUCCESS)
 	{
 		fprintf(stderr, "EnqueInsertions ERROR\n");
@@ -193,14 +193,6 @@ int main()
 	printf("============\n/");
 
 	
-	int b[3] = {2,4,0};
-	err = clbptEnqueueSearches(t, 3, b, NULL);
-	if (err != CL_SUCCESS)
-	{
-		fprintf(stderr, "EnqueSearches ERROR\n");
-	}
-	clbptFlush(t);
-*/
 	printf("haha\n"); 
 	//err = clFlush( command_queue );
 	//err = clFinish( command_queue );
