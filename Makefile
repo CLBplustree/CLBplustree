@@ -27,8 +27,10 @@ bin/%.h: src/KMA/%.h
 
 bin: bin/clbpt ${CPS} 
 
-run: bin
+bin/input:
 	cp CLBPTbench/simple bin/input
+
+run: bin bin/input
 	cd bin; ./clbpt
 
 clean:

@@ -293,42 +293,47 @@ outset *uniform_method(optset *opts)
 
     if(opts->insert_num){
             type = 1;
+            fprintf(opts->output, "%d %d\n", type, opts->insert_num);
+            /*
             fwrite(&type,sizeof(int), 1,opts->output);
             fwrite(&opts->insert_num,sizeof(int), 1,opts->output);
+            */
     }
 	for( int i = 0 ; i < opts->insert_num ; i++ )
 	{
 		outbuf->insertbuf[i] = dis(gen);
-		fwrite(&outbuf->insertbuf[i],sizeof(int),1,opts->output);
-		//printf("%d key : %d.\n",i,outbuf->insertbuf[i]);
-	}
-	for( int i = 0 ; i < opts->insert_num ; i++ )
-	{
-		fwrite(&outbuf->insertbuf[i],sizeof(int),1,opts->output);
+		fprintf(opts->output, "%d %d\n", outbuf->insertbuf[i], 
+			outbuf->insertbuf[i]);
+		//fwrite(&outbuf->insertbuf[i],sizeof(int),1,opts->output);
+		//fwrite(&outbuf->insertbuf[i],sizeof(int),1,opts->output);
 	}
 	VERBOSE(opts->verbose)("Generating %10d select operations\n",ssz);
 
     if(opts->insert_num){
             type = 2;
+	    fprintf(opts->output, "%d %d\n", type, opts->select_num);
+	    /*
             fwrite(&type,sizeof(int), 1,opts->output);
             fwrite(&opts->select_num,sizeof(int), 1,opts->output);
+	    */
     }
 	for( int i = 0 ; i < opts->select_num ; i++ )
 	{
 		outbuf->selectbuf[i] = dis(gen);
-		fwrite(&outbuf->selectbuf[i],sizeof(int),1,opts->output);
+		fprintf(opts->output, "%d\n", outbuf->selectbuf[i]);
+		//fwrite(&outbuf->selectbuf[i],sizeof(int),1,opts->output);
 		//printf("%d key : %d.\n",i,outbuf->selectbuf[i]);
 	}
 	VERBOSE(opts->verbose)("Generating %10d delete operations\n",dsz);
-	if(opts->delete_num)fprintf(opts->output,"%d%d",3,opts->delete_num);
+	if(opts->delete_num)fprintf(opts->output,"%d %d\n",3,opts->delete_num);
 	for( int i = 0 ; i < opts->delete_num ; i++ )
 	{
 		outbuf->deletebuf[i] = dis(gen);
-		fprintf(opts->output,"%d",outbuf->deletebuf[i]);
+		fprintf(opts->output,"%d\n",outbuf->deletebuf[i]);
 	}
 	for( int i = 0 ; i < opts->delete_num ; i++ )
 	{
-		fprintf(opts->output,"%d",outbuf->deletebuf[i]);
+		fprintf(opts->output,"%d\n",outbuf->deletebuf[i]);
 	}
 	return outbuf;
 }

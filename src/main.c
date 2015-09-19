@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <CL/cl.h>
+#include <assert.h>
 #include "clbpt.h"
  
 #define MAT_SIZE 15
@@ -83,7 +84,8 @@ int main()
 #define CLBPT_DELETE_TYPE 3
 #define CLBPT_RANGE_TYPE 4
 	FILE *input_data ;
-	if(input_data=fopen("input","r+b"))printf("fuck\n");
+	input_data=fopen("input","r");
+	assert(input_data != NULL);
 	int bfsize = 128;
 	int *data_buffer = calloc(128, sizeof(int));
 	int *rec_buffer = calloc(128, sizeof(int));
@@ -94,7 +96,8 @@ int main()
 		int i;
 		int err = CL_SUCCESS;
 		int data_info[2] = {0,0};
-		fread(data_info, 2, sizeof(int), input_data);
+		fscanf(input_data, "%d%d", &data_info[0], &data_info[1]);
+		//fread(data_info, 2, sizeof(int), input_data);
 		printf("Info %d %d\n",data_info[0],data_info[1]);
 		getchar();
 		time(&start_time);
@@ -106,24 +109,27 @@ int main()
 		}
 		switch (data_info[0]){
 		case  CLBPT_SEARCH_TYPE:
-			fread(data_buffer, data_info[1], sizeof(int), input_data);
+			//fread(data_buffer, data_info[1], sizeof(int), input_data);
 			for (i = 0; i < data_info[1]; i++){
+				fscanf(input_data, "%d", &data_buffer[i]);
 				printf("%d key : %d.\n", i, data_buffer[i]);
 			}
 			clbptEnqueueSearches(t, data_info[1], data_buffer, rec_buffer);
 			break;
 		case  CLBPT_INSERT_TYPE:
-			fread(data_buffer, data_info[1], sizeof(int), input_data);
-			fread(rec_buffer, data_info[1], sizeof(int), input_data);
-			//for (i = 0; i < data_info[1]; i++){
-				//printf("%d key : %d.\n", i, data_buffer[i]);
-			//}
-			//getchar();
+			//fread(data_buffer, data_info[1], sizeof(int), input_data);
+			//fread(rec_buffer, data_info[1], sizeof(int), input_data);
+			for (i = 0; i < data_info[1]; i++){
+				fscanf(input_data, "%d", &data_buffer[i]);
+				fscanf(input_data, "%d", &rec_buffer[i]);
+				printf("%d key : %d.\n", i, data_buffer[i]);
+			}
 			clbptEnqueueInsertions(t, data_info[1], data_buffer, rec_buffer);
 			break;
 		case  CLBPT_DELETE_TYPE:
-			fread(data_buffer, data_info[1], sizeof(int), input_data);
+			//fread(data_buffer, data_info[1], sizeof(int), input_data);
 			for (i = 0; i < data_info[1]; i++){
+				fscanf(input_data, "%d", &data_buffer[i]);
 				printf("%d key : %d.\n", i, data_buffer[i]);
 			}
 			clbptEnqueueDeletions(t, data_info[1], data_buffer);
