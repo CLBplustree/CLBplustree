@@ -36,7 +36,7 @@ void _clbptLoadProgram(clbpt_platform platform, char *filename)
 		_clbptDebug( "error load program : %d\n", err);
 	if (platform->program == NULL)
 		_clbptDebug( "error load program\n");
-	if ((err = clBuildProgram(platform->program, 1, platform->devices, "-cl-std=CL2.0 -I src/ -I src/KMA ", 0, 0)) != CL_SUCCESS)
+	if ((err = clBuildProgram(platform->program, 1, platform->devices, "-cl-std=CL2.0 -I .", 0, 0)) != CL_SUCCESS)
 	{
 		size_t len;
 		char *buffer;
@@ -139,7 +139,7 @@ int clbptCreatePlatform(
 	dst_platform->context = context;
 
 	_clbptGetDevices(dst_platform);
-	_clbptLoadProgram(dst_platform, "src/clbpt.cl");
+	_clbptLoadProgram(dst_platform, "clbpt.cl");
 	_clbptCreateKernels(dst_platform);
 	_clbptCreateQueues(dst_platform);
 

@@ -75,7 +75,7 @@ int main()
 	fprintf(stderr, "CreatePlatform SUCCESS\n");
 	clbptCreateTree(&t, p, 4, sizeof(int));
 	fprintf(stderr, "CreateTree SUCCESS\n");
-/*	
+
 	// read test data
 #define CLBPT_STOP_TYPE 0
 #define CLBPT_INSERT_TYPE 1
@@ -151,9 +151,9 @@ int main()
 		printf("Cost time : %d seconds\n",delay);
 	}
 	return 0;
-*/
+
 	//===========================
-	///*
+	/*
 	int d[10] = { 7,21,24,23,14,15,16,17,18,19 };
 	int d_rec[10] = { 8,22,25,24,15,16,17,18,19,20 };
 	err = clbptEnqueueInsertions(t, 10, d, (void **)d_rec);
@@ -164,6 +164,7 @@ int main()
 	clbptFinish(t);
 	getchar();
 	printf("============\n");
+	*/
 /*
 	
 	int a[10] = { 10,3,5,6,2,8,11,12,13,1 };
