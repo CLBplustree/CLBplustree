@@ -227,7 +227,7 @@ int main()
 	//err = clReleaseCommandQueue( command_queue );
 //	err = clReleaseContext( context );
 	getchar();
-	//clbptReleaseTree(t);
+	clbptReleaseTree(t);
  
 	return 0;
  

@@ -58,7 +58,10 @@ void * _clbptHandler(void *tree)
 	while (1)
 	{
 		_clbptLockWaitBuffer((clbpt_tree)tree);	/////
-		while(((clbpt_tree)tree)->is_Complete != 0);
+		while(((clbpt_tree)tree)->is_Complete != 0)
+		{
+			if(((clbpt_tree)tree)->close_thread) pthread_exit(0);
+		}
 		if(((clbpt_tree)tree)->close_thread) pthread_exit(0);
 		do {
 			if(((clbpt_tree)tree)->close_thread) pthread_exit(0);
@@ -180,17 +183,23 @@ int clbptReleaseTree(clbpt_tree tree)
 {
 	tree->close_thread = 1;
 	_clbptUnlockWaitBuffer(tree);
-	pthread_join(tree->handler,NULL);
+	pthread_join(tree->handler, NULL);
 	if (tree == NULL)
 		return CLBPT_SUCCESS;
 	_clbptReleaseLeaf(tree);
 	// wait_buf is corrupted by clbptSelectFromWaitBuffer
-	//if (tree->wait_buf != NULL) 
-	//	free(tree->wait_buf);
-	if (tree->fetch_buf != NULL)
+	if (tree->fetch_buf != NULL) 
 		free(tree->fetch_buf);
+	if (tree->wait_buf != NULL) 
+		free(tree->wait_buf);
+	if (tree->execute_buf != NULL)
+		free(tree->execute_buf);
 	if (tree->fetch_result_buf != NULL)
 		free(tree->fetch_result_buf);
+	if (tree->wait_result_buf != NULL)
+		free(tree->wait_result_buf);
+	if (tree->execute_result_buf != NULL)
+		free(tree->execute_result_buf);
 	free(tree);
 
 	return CLBPT_SUCCESS;
