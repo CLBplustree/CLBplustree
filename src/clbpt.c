@@ -290,10 +290,27 @@ int clbptEnqueueInsertions(
 	int i, err;
 	for (i = 0; i < num_inserts; i++)
 	{
+		/*
 		err = clbptEnqueueFecthBuffer(
 			tree,
 			CLBPT_PACKET_INSERT(keys[i], 1),
 			records[i]);
+		*/
+		if (tree->record_size == sizeof(char))
+			err = clbptEnqueueFecthBuffer(
+				tree,
+				CLBPT_PACKET_INSERT(keys[i], 1),
+				(void *)((char *)records+ i));
+		else if (tree->record_size == sizeof(int))
+			err = clbptEnqueueFecthBuffer(
+				tree,
+				CLBPT_PACKET_INSERT(keys[i], 1),
+				(void *)((int *)records+ i));
+		else if (tree->record_size == sizeof(double))
+			err = clbptEnqueueFecthBuffer(
+				tree,
+				CLBPT_PACKET_INSERT(keys[i], 1),
+				(void *)((double *)records+ i));
 		if (err != CLBPT_SUCCESS) return err;
 	}
 	return CLBPT_SUCCESS;

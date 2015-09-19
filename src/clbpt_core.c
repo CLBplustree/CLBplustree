@@ -12,7 +12,7 @@
 
 // Size and Order
 static size_t max_local_work_size;		// get this value in _clbptInitialize
-static uint32_t order = CLBPT_ORDER;	// get this value in _clbptInitialize
+//static uint32_t order = CLBPT_ORDER;	// get this value in _clbptInitialize
 
 
 int handle_node(clbpt_tree tree, void *node_addr, void *leftmost_node_addr);
@@ -20,7 +20,7 @@ int handle_leftmost_node(clbpt_tree tree, clbpt_leaf_node *node);
 
 int search_leaf(int32_t key, void *node_addr, void *result_addr, size_t record_size);
 int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_addr, size_t record_size);
-int insert_leaf(int32_t key, void *node_addr, void *record, size_t record_size);
+int insert_leaf(int32_t key, void *node_addr, void *record_addr, size_t record_size);
 int delete_leaf(int32_t key, void *node_addr);
 
 void show_pkt_buf(clbpt_packet *pkt_buf, uint32_t buf_size);	// function for testing
@@ -211,11 +211,12 @@ int _clbptInitialize(clbpt_tree tree)
 	err = clGetDeviceInfo(device, CL_DEVICE_MAX_WORK_ITEM_SIZES, sizeof(max_work_item_sizes), &max_work_item_sizes[0], NULL);
 	assert(err == CL_SUCCESS);
 	//_clbptDebug( "Device Maximum Work Item Sizes = %zu x %zu x %zu\n", max_work_item_sizes[0], max_work_item_sizes[1], max_work_item_sizes[2]);
-	//max_local_work_size = max_work_item_sizes[0];	// one dimension
-	//order = max_local_work_size/2;
-	max_local_work_size = 256;	// one dimension
-	order = 4;
-	_clbptDebug( "Tree Order = %d\n", order);
+	max_local_work_size = max_work_item_sizes[0];	// one dimension
+	if (tree->order <= 0)
+		tree->order = max_local_work_size/2;
+	//max_local_work_size = 256;	// one dimension
+	//order = 4;
+	_clbptDebug( "Tree Order = %d\n", tree->order);
 
 	// clmem allocation
 	tree->wait_buf_d = clCreateBuffer(context, 0, tree->buf_size * sizeof(clbpt_packet), NULL, &err);
@@ -428,7 +429,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 						j++;
 					}
 					tree->wait_buf[j] = tree->execute_buf[k];	// Rollback the insertion packet to wait buffer
-
+					tree->wait_result_buf[j] = tree->execute_result_buf[k];
 					if (tree->instr_result_buf[k] == 0)	// Delete the entry if the rollback insertion packet did insert
 					{
 						delete_leaf(getKeyFromPacket(tree->execute_buf[k]), node_addr);
@@ -480,7 +481,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 						j++;
 					}
 					tree->wait_buf[j] = tree->execute_buf[k];	// Rollback the insertion packet to wait buffer
-
+					tree->wait_result_buf[j] = tree->execute_result_buf[k];
 					if (tree->instr_result_buf[k] == 0)	// Delete the entry if the rollback insertion packet did insert
 						delete_leaf(getKeyFromPacket(tree->execute_buf[k]), node_addr);
 					k--;
@@ -620,7 +621,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 
 	_clbptDebug( "leafmirror_addr assign SUCCESS\n");
 
-	_clbptPrintTree(tree->property, tree->record_size);
+	//_clbptPrintTree(tree->property, tree->record_size);
 
 	return CL_SUCCESS;
 }
@@ -691,12 +692,12 @@ int handle_node(clbpt_tree tree, void *node_addr, void *leftmost_node_addr)
 	clbpt_leaf_entry *entry_head;
 
 	_clbptDebug( "handle node START\n");
-	if (node->num_entry >= order)	// Need to Split
+	if (node->num_entry >= tree->order)	// Need to Split
 	{
-		if (node->num_entry > 2*(order-1))
+		if (node->num_entry > 2*(tree->order-1))
 		{
 			// Insertion pkts rollback to waiting buffer
-			return node->num_entry - 2*(order-1);
+			return node->num_entry - 2*(tree->order-1);
 		}
 		node_sibling = (clbpt_leaf_node *)malloc(sizeof(clbpt_leaf_node));
 		m = half_f(node->num_entry);
@@ -719,17 +720,17 @@ int handle_node(clbpt_tree tree, void *node_addr, void *leftmost_node_addr)
 		// After splitting, insert parent_key to internal node
 		clbpt_entry entry_d;
 		entry_d.key = node_sibling->parent_key;
-		entry_d.child = NULL;
+		entry_d.child = (uintptr_t)NULL;
 		tree->ins[tree->num_ins].target = node->mirror;
 		tree->ins[tree->num_ins].entry = entry_d;
 		tree->leafnode_addr[tree->num_ins] = (void *)node_sibling;
 		tree->num_ins++;
 	}
-	else if (node->num_entry < half_f(order))	// Need Borrow or Merge
+	else if (node->num_entry < half_f(tree->order))	// Need Borrow or Merge
 	{
 		if (node->prev_node != NULL && node->prev_node->mirror->parent == node->mirror->parent)
 		{
-			if (node->num_entry + node->prev_node->num_entry < order)	// Merge (with left sibling)
+			if (node->num_entry + node->prev_node->num_entry < tree->order)	// Merge (with left sibling)
 			{
 				_clbptDebug( "Merging...\n");
 
@@ -784,7 +785,7 @@ int handle_node(clbpt_tree tree, void *node_addr, void *leftmost_node_addr)
 				// Insert new parent_key to internal node
 				clbpt_entry entry_d;
 				entry_d.key = node->parent_key;
-				entry_d.child = NULL;
+				entry_d.child = (uintptr_t)NULL;
 				tree->ins[tree->num_ins].target = node->mirror;
 				tree->ins[tree->num_ins].entry = entry_d;
 				tree->leafnode_addr[tree->num_ins] = (void *)node;
@@ -807,11 +808,11 @@ int handle_leftmost_node(clbpt_tree tree, clbpt_leaf_node *node)
 	clbpt_leaf_entry *entry_head;
 
 	_clbptDebug( "handle leftmost_node START with num_entry = %d\n", node->num_entry);
-	if (node->num_entry >= half_f(order)) return 0;
+	if (node->num_entry >= half_f(tree->order)) return 0;
 	if (node->next_node != NULL)
 	{
 		
-		if (node->num_entry + node->next_node->num_entry < order)	// Merge (with right sibling)
+		if (node->num_entry + node->next_node->num_entry < tree->order)	// Merge (with right sibling)
 		{
 			_clbptDebug( "Merge\n");
 			node_sibling = node->next_node;
@@ -866,7 +867,7 @@ int handle_leftmost_node(clbpt_tree tree, clbpt_leaf_node *node)
 				// Insert new parent_key to internal node
 				clbpt_entry entry_d;
 				entry_d.key = node_sibling->parent_key;
-				entry_d.child = NULL;
+				entry_d.child = (uintptr_t)NULL;
 				tree->ins[tree->num_ins].target = node_sibling->mirror;
 				tree->ins[tree->num_ins].entry = entry_d;
 				tree->leafnode_addr[tree->num_ins] = (void *)node_sibling;
@@ -1003,7 +1004,7 @@ int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_add
 	return num_records;
 }
 
-int insert_leaf(int32_t key, void *node_addr, void *record, size_t record_size)
+int insert_leaf(int32_t key, void *node_addr, void *record_addr, size_t record_size)
 {
 	int existed = 0;
 	clbpt_leaf_node *node;
@@ -1034,7 +1035,8 @@ int insert_leaf(int32_t key, void *node_addr, void *record, size_t record_size)
 		entry_new = (clbpt_leaf_entry *)malloc(sizeof(clbpt_leaf_entry));
 		entry_new->key = key;
 		entry_new->record_ptr = (void *)malloc(record_size);
-		memcpy(entry_new->record_ptr, &record, record_size);
+		//memcpy(entry_new->record_ptr, &record, record_size);
+		memcpy(entry_new->record_ptr, record_addr, record_size);
 		entry_new->prev = entry_prev;
 		entry_new->next = entry;
 		if (node->head == NULL)
@@ -1238,7 +1240,7 @@ _clbptPrintTree(
 	)
 {
 	int level = property->level;
-	uintptr_t root = property->root;
+	uintptr_t root = (uintptr_t)property->root;
 
 	_clbptDebug( "### Traversal of GPU-side tree ###\n");
 	_clbptDebug( "Level of tree: %d\n", level);
@@ -1310,13 +1312,13 @@ void show_leaves(clbpt_leaf_node *leaf, size_t record_size)	// function for test
 			switch (record_size)
 			{
 				case sizeof(char):
-					_clbptDebug( "|(key: %d, rec: %c)", entry->key, *((char *)entry->record_ptr));
+					_clbptDebug( "|(%d -> %c)", entry->key, *((char *)entry->record_ptr));
 					break;
 				case sizeof(int):
-					_clbptDebug( "|(key: %d, rec: %d)", entry->key, *((int *)entry->record_ptr));
+					_clbptDebug( "|(%d -> %d)", entry->key, *((int *)entry->record_ptr));
 					break;
 				case sizeof(double):
-					_clbptDebug( "|(key: %d, rec: %lf)", entry->key, *((double *)entry->record_ptr));
+					_clbptDebug( "|(%d -> %lf)", entry->key, *((double *)entry->record_ptr));
 					break;
 				default:
 					break;

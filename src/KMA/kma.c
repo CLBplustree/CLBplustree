@@ -23,6 +23,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/stat.h>
 
 #include "kma.h"
@@ -137,7 +138,7 @@ _kma_create_64_svm(cl_context ctx, cl_command_queue cq, unsigned int sblocks, vo
 		localHeap.bytes, 0);
 	if(*host_ptr == NULL) {
 		printf("KMA: Could not allocate heap on-device\n");
-		return (cl_mem) 0;
+		return 1;
 	}
 
 	//clEnqueueSVMMap(cq, CL_TRUE, CL_MAP_WRITE, *host_ptr, localHeap.bytes, 0, NULL, NULL);
@@ -145,7 +146,7 @@ _kma_create_64_svm(cl_context ctx, cl_command_queue cq, unsigned int sblocks, vo
 	//clEnqueueSVMUnmap(cq, *host_ptr, 0, NULL, NULL);
 	if(*host_ptr == NULL) {
 		printf("KMA: Could not setup heap on device\n");
-		return (cl_mem) 0;
+		return 1;
 	}
 
 	clFinish(cq);

@@ -68,14 +68,14 @@ int main()
 	context = clCreateContext( NULL, 1, &device_id, NULL, NULL, &err );
 	err_check( err, "clCreateContext" );
 
-	printf("data information about devices are: %d\n", (int)arr[0]);
+	//printf("data information about devices are: %d\n", (int)arr[0]);
 
 	p = malloc(sizeof(struct _clbpt_platform));
 	clbptCreatePlatform(&p, context);
 	fprintf(stderr, "CreatePlatform SUCCESS\n");
-	clbptCreateTree(&t, p, 256, sizeof(int));
+	clbptCreateTree(&t, p, 4, sizeof(int));
 	fprintf(stderr, "CreateTree SUCCESS\n");
-	
+/*	
 	// read test data
 #define CLBPT_STOP_TYPE 0
 #define CLBPT_INSERT_TYPE 1
@@ -151,11 +151,12 @@ int main()
 		printf("Cost time : %d seconds\n",delay);
 	}
 	return 0;
+*/
 	//===========================
-	/*
+	///*
 	int d[10] = { 7,21,24,23,14,15,16,17,18,19 };
 	int d_rec[10] = { 8,22,25,24,15,16,17,18,19,20 };
-	err = clbptEnqueueInsertions(t, 1, d, d_rec);
+	err = clbptEnqueueInsertions(t, 10, d, (void **)d_rec);
 	if (err != CL_SUCCESS)
 	{
 		fprintf(stderr, "EnqueInsertions ERROR\n");
@@ -163,18 +164,19 @@ int main()
 	clbptFinish(t);
 	getchar();
 	printf("============\n");
-
+/*
 	
 	int a[10] = { 10,3,5,6,2,8,11,12,13,1 };
 	int a_rec[10] = { 11,4,6,7,3,9,12,13,14,2 };
-	err = clbptEnqueueInsertions(t, 3, a, a_rec);
+	err = clbptEnqueueInsertions(t, 10, a, (void **)a_rec);
 	if (err != CL_SUCCESS)
 	{
 		fprintf(stderr, "EnqueInsertions ERROR\n");
 	}
 	clbptFinish(t);
 	getchar();
-	err = clbptEnqueueDeletions(t, 3, a, NULL);
+
+	err = clbptEnqueueDeletions(t, 3, a);
 	if (err != CL_SUCCESS)
 	{
 		fprintf(stderr, "EnqueInsertions ERROR\n");
@@ -203,6 +205,18 @@ int main()
 	clbptFinish(t);
 	printf("============\n/");
 
+	int l_keys[10] = { 1, 1, 2, 3, 4, 5, 5, 3, 2, 1 };
+	int u_keys[10] = { 5, 5, 7, 9, 5, 7, 8, 4, 3, 2 };
+	clbpt_pair_group_list pg_list;
+	clbptCreatePairGroupList(&pg_list, 10, l_keys, u_keys);
+	err = clbptEnqueueRangeSearches(t, 10, l_keys, u_keys, pg_list);
+	if (err != CL_SUCCESS)
+	{
+		fprintf(stderr, "EnqueRangeSearches ERROR\n");
+	}
+	clbptFinish(t);
+	clbptReleasePairGroupList(&pg_list, 10);
+	printf("============\n/");
 	*/
 	
 	printf("haha\n"); 
@@ -213,7 +227,7 @@ int main()
 	//err = clReleaseCommandQueue( command_queue );
 //	err = clReleaseContext( context );
 	getchar();
-	clbptReleaseTree(t);
+	//clbptReleaseTree(t);
  
 	return 0;
  

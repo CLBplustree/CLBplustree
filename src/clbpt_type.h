@@ -101,12 +101,12 @@ typedef clbpt_pair_group *clbpt_pair_group_list;
 
 // Packets to internal node
 typedef struct _clbpt_ins_pkt {
-	clbpt_int_node *target;
+	clbpt_leafmirror *target;
 	clbpt_entry entry;
 } clbpt_ins_pkt;
 
 typedef struct _clbpt_del_pkt {
-	clbpt_int_node *target;
+	clbpt_leafmirror *target;
 	int32_t key;
 } clbpt_del_pkt;
 
