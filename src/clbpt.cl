@@ -4,7 +4,7 @@
 // Temporary. Replace this by compiler option later.
 #define CLBPT_ORDER 4		// Should be less than or equal to half
 							// of MAX_LOCAL_SIZE
-#define CPU_BITNESS 4 
+#define CPU_BITNESS 64 
 #define MAX_LOCAL_SIZE 256
 
 #if CPU_BITNESS == 32
@@ -646,25 +646,11 @@ _clbptWPacketBufferHandler(
 	uint num_ins_sgroup, num_del_sgroup;
 	uint is_in_sgroup;
 	uintptr_t cur_parent;
-	/*
-	clk_event_t *level_bar;
-	*/
+	clk_event_t level_bar;
 	int num_kernel = 0;
 
 	ins_begin = 0;
 	del_begin = 0;
-	/*
-	if (gid == 0) {
-		if (num_ins > num_del) {
-			level_bar = (clk_event_t *)
-				malloc(heap, num_ins * sizeof(clk_event_t));
-		}
-		else {
-			level_bar = (clk_event_t *)
-				malloc(heap, num_del * sizeof(clk_event_t));
-		}
-	}
-	*/
 	while (ins_begin != num_ins || del_begin != num_del) {
 		// Define cur_target
 		if (gid == 0) {
@@ -714,27 +700,6 @@ _clbptWPacketBufferHandler(
 		num_del_sgroup = work_group_reduce_add(is_in_sgroup);
 		// Enqueue super group handler
 		if (gid == 0) {
-			/*	
-			enqueue_kernel(
-				get_default_queue(),
-				CLK_ENQUEUE_FLAGS_NO_WAIT,
-				ndrange_1D(2 * CLBPT_ORDER, 2 * CLBPT_ORDER),
-				0,
-				(clk_event_t *)NULL,
-				&level_bar[num_kernel++],
-				^(__local void *proc_list){
-					_clbptWPacketSuperGroupHandler(
-						proc_list,
-						ins + ins_begin,
-						num_ins_sgroup,
-						del + del_begin,
-						num_del_sgroup,
-						heap,
-						level_proc == property->level - 2
-					);
-				 },
-				2 * CLBPT_ORDER * sizeof(clbpt_entry)
-			);*/
 			enqueue_kernel(
 				get_default_queue(),
 				CLK_ENQUEUE_FLAGS_NO_WAIT,
@@ -761,8 +726,8 @@ _clbptWPacketBufferHandler(
 		del_begin += num_del_sgroup;
 	}	
 	if (gid == 0) {
-		clk_event_t level_bar;
-
+		// AMD DRIVER BUG
+		/*
 		enqueue_marker(get_default_queue(), 0, NULL, &level_bar);
 		enqueue_kernel(
 			get_default_queue(),
@@ -776,19 +741,21 @@ _clbptWPacketBufferHandler(
 					property, level_proc);
 			 }
 		);
-		/*enqueue_kernel(
+		*/
+		// END OF BUG
+		// Just let it run without crash 
+		enqueue_kernel(
 			get_default_queue(),
 			CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
 			ndrange_1D(MAX_LOCAL_SIZE, MAX_LOCAL_SIZE),
-			num_kernel,
-			level_bar,
+			0,
+			NULL,
 			NULL,
 			^{
 				_clbptWPacketCompact(ins, num_ins, del, num_del, heap,
 					property, level_proc);
 			 }
-		);*/
-		//free(heap, level_bar);
+		);
 	}
 }
 
@@ -818,10 +785,8 @@ _clbptWPacketCompact(
 	{
 		uint old_ins_i = old_ins_i_base + gid;
 		if (old_ins_i < num_ins) {
-			/// AMD DRIVER BUG
 			ins_proc = ins[old_ins_i];
-			valid = (ins_proc.target != NULL) ? 1 : 0;
-			/// End of BUG
+			valid = (ins_proc.target != 0) ? 1 : 0;
 		}
 		else {
 			valid = 0;
@@ -831,10 +796,12 @@ _clbptWPacketCompact(
 		if (valid) {
 			ins[id_base + id] = ins_proc;
 		}
-		work_group_barrier(0);
+		work_group_barrier(CLK_GLOBAL_MEM_FENCE);
 		id_base += work_group_reduce_add(valid);
 	}
-	num_ins = id_base;
+	if (gid == 0)
+		num_ins = id_base;
+	work_group_barrier(CLK_GLOBAL_MEM_FENCE);
 	// Compace Delete Packet List
 	id_base = 0;
 	for (uint old_del_i_base = 0; old_del_i_base < num_del;
@@ -852,10 +819,11 @@ _clbptWPacketCompact(
 		if (valid) {
 			del[id_base + id] = del_proc;
 		}
-		work_group_barrier(0);
+		work_group_barrier(CLK_GLOBAL_MEM_FENCE);
 		id_base += work_group_reduce_add(valid);
 	}
-	num_del = id_base;
+	if (gid == 0)
+		num_del = id_base;
 	work_group_barrier(CLK_GLOBAL_MEM_FENCE);
 	// Enqueue _clbptWPacketBufferHandler
 	if (gid == 0 && (num_ins != 0 || num_del != 0)) {
@@ -915,16 +883,16 @@ _clbptWPacketSuperGroupHandler(
 	ins_begin = 0;
 	del_begin = 0;
 	if (num_ins > 0) {
-		/// AMD DRIVER BUG
+		// AMD DRIVER BUG
 		//parent = (clbpt_int_node *)
-		//(((clbpt_int_node *)(ins[0].target))->parent);
-		/// END OF BUG
+		//	(((clbpt_int_node *)(ins[0].target))->parent);
+		// END OF BUG
 	}
 	else {
-		/// AMD DRIVER BUG
+		// AMD DRIVER BUG
 		//parent = (clbpt_int_node *)
-		//(((clbpt_int_node *)(del[0].target))->parent);
-		/// END OF BUG
+		//	(((clbpt_int_node *)(del[0].target))->parent);
+		// END OF BUG
 	}
 	for (target_branch_index = 0; target_branch_index < parent->num_entry;
 		target_branch_index++)
