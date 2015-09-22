@@ -22,6 +22,8 @@
 //#define half_c(X) (((int)X+1)/2)
 #define half_f(X) (((int)X)/2)
 
+#define needInsertionRollback -1
+// handle_node
 #define leftMostNodeBorrowMerge -1
 #define mergeWithLeftMostNode -2
 

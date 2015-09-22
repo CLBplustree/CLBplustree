@@ -114,7 +114,7 @@ int main()
 				fscanf(input_data, "%d", &data_buffer[i]);
 				printf("%d key : %d.\n", i, data_buffer[i]);
 			}
-			clbptEnqueueSearches(t, data_info[1], data_buffer, rec_buffer);
+			clbptEnqueueSearches(t, data_info[1], data_buffer, (void **)rec_buffer);
 			break;
 		case  CLBPT_INSERT_TYPE:
 			//fread(data_buffer, data_info[1], sizeof(int), input_data);
@@ -124,7 +124,7 @@ int main()
 				fscanf(input_data, "%d", &rec_buffer[i]);
 				printf("%d key : %d.\n", i, data_buffer[i]);
 			}
-			clbptEnqueueInsertions(t, data_info[1], data_buffer, rec_buffer);
+			clbptEnqueueInsertions(t, data_info[1], data_buffer, (void **)rec_buffer);
 			break;
 		case  CLBPT_DELETE_TYPE:
 			//fread(data_buffer, data_info[1], sizeof(int), input_data);

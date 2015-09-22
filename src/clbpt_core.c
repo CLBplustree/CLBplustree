@@ -20,7 +20,7 @@ int handle_leftmost_node(clbpt_tree tree, clbpt_leaf_node *node);
 
 int search_leaf(int32_t key, void *node_addr, void *result_addr, size_t record_size);
 int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_addr, size_t record_size);
-int insert_leaf(int32_t key, void *node_addr, void *record_addr, size_t record_size);
+int insert_leaf(int32_t key, void *node_addr, void *record_addr, size_t record_size, int order);
 int delete_leaf(int32_t key, void *node_addr);
 
 void show_pkt_buf(clbpt_packet *pkt_buf, uint32_t buf_size);	// function for testing
@@ -214,8 +214,6 @@ int _clbptInitialize(clbpt_tree tree)
 	max_local_work_size = max_work_item_sizes[0];	// one dimension
 	if (tree->order <= 0)
 		tree->order = max_local_work_size/2;
-	//max_local_work_size = 256;	// one dimension
-	//order = 4;
 	_clbptDebug( "Tree Order = %d\n", tree->order);
 
 	// clmem allocation
@@ -403,42 +401,15 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 		pkt = tree->execute_buf[i];
 		key = getKeyFromPacket(pkt);
 
-		if (isNopPacket(pkt))	// Reach the end of the execute buffer
+		if (isNopPacket(pkt) ||						// Reach the end of the execute buffer
+			i == tree->buf_size-1 ||
+			node_addr != tree->node_addr_buf[i])	// Accessed node changed	
 		{
 			if (i == 0)	// Do nothing if the execute buffer is empty
 				break;
 
-			_clbptDebug( "End of packets\n");
 			node_result = handle_node(tree, node_addr, leftmost_node_addr);	// Handle the last operated node
 
-			if (node_result > 0)	// Need to rollback insertion packets to waiting buffer
-			{
-				//<DEBUG>
-				_clbptDebug( "Insert ROLLBACK, # of pkts = %d\n", node_result);
-				//</DEBUG>
-
-				k = i-1;
-				for(; node_result > 0; node_result--)
-				{
-					while(!isInsertPacket(tree->execute_buf[k]))	// Search backward for insertion packets in execute buffer
-					{
-						k--;
-					}
-					while(tree->wait_buf[j] != PACKET_NOP)	// Search forward for empty space in wait buffer
-					{
-						j++;
-					}
-					tree->wait_buf[j] = tree->execute_buf[k];	// Rollback the insertion packet to wait buffer
-					tree->wait_result_buf[j] = tree->execute_result_buf[k];
-					if (tree->instr_result_buf[k] == 0)	// Delete the entry if the rollback insertion packet did insert
-					{
-						delete_leaf(getKeyFromPacket(tree->execute_buf[k]), node_addr);
-					}
-						
-					k--;
-				}
-				node_result = handle_node(tree, node_addr, leftmost_node_addr);	// After rollback, re-handle the node
-			}
 			if (node_result == leftMostNodeBorrowMerge)
 			{
 				leftmost_node_addr = node_addr;
@@ -456,56 +427,10 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 				leftmost_node_addr = NULL;
 			}
 
-			break;
-		}
-
-		if (node_addr != tree->node_addr_buf[i])	// Accessed node changed
-		{
-			node_result = handle_node(tree, node_addr, leftmost_node_addr);	// Handle the previous node
-
-			if (node_result > 0)	// Need to rollback insertion packets to waiting buffer
-			{
-				//<DEBUG>
-				_clbptDebug( "Insert ROLLBACK, # of pkts = %d\n", node_result);
-				//</DEBUG>
-
-				k = i - 1;
-				for(; node_result > 0; node_result--)
-				{
-					while (!isInsertPacket(tree->execute_buf[k]))	// Search backward for insertion packets in execute buffer
-					{
-						k--;
-					}
-					while (tree->wait_buf[j] != PACKET_NOP)	// Search forward for empty space in wait buffer
-					{
-						j++;
-					}
-					tree->wait_buf[j] = tree->execute_buf[k];	// Rollback the insertion packet to wait buffer
-					tree->wait_result_buf[j] = tree->execute_result_buf[k];
-					if (tree->instr_result_buf[k] == 0)	// Delete the entry if the rollback insertion packet did insert
-						delete_leaf(getKeyFromPacket(tree->execute_buf[k]), node_addr);
-					k--;
-				}
-				node_result = handle_node(tree, node_addr, leftmost_node_addr);	// After rollback, re-handle the node
-			}
-			if (node_result == leftMostNodeBorrowMerge)
-			{
-				leftmost_node_addr = node_addr;
-			}
-			else if (node_result == mergeWithLeftMostNode)
-			{
-				leftmost_node_addr = NULL;
-			}
-
-			if (leftmost_node_addr != NULL &&
-				((clbpt_leaf_node *)node_addr)->mirror->parent !=
-				((clbpt_leaf_node *)leftmost_node_addr)->mirror->parent)	// node's parent is different with leftmost node's, handle leftmost node
-			{
-				handle_leftmost_node(tree, leftmost_node_addr);
-				leftmost_node_addr = NULL;
-			}
-
-			node_addr = tree->node_addr_buf[i];
+			if (isNopPacket(pkt) || i == tree->buf_size-1)	// Reach the end of the execute buffer
+				break;
+			else
+				node_addr = tree->node_addr_buf[i];
 		}
 
 		if (isSearchPacket(pkt))
@@ -519,10 +444,18 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 		}
 		else if (isInsertPacket(pkt))
 		{
-			//<DEBUG>
 			_clbptDebug( "insert key = %d\n", key);
-			//</DEBUG>
-			tree->instr_result_buf[i] = insert_leaf(key, node_addr, tree->execute_result_buf[i], tree->record_size);
+			tree->instr_result_buf[i] = insert_leaf(key, node_addr, tree->execute_result_buf[i], tree->record_size, tree->order);
+			if (tree->instr_result_buf[i] == needInsertionRollback)
+			{
+				_clbptDebug( "Insert ROLLBACK\n");
+				while(tree->wait_buf[j] != PACKET_NOP)	// Search forward for empty space in wait buffer
+				{
+					j++;
+				}
+				tree->wait_buf[j] = tree->execute_buf[i];	// Rollback the insertion packet to wait buffer
+				tree->wait_result_buf[j] = tree->execute_result_buf[i];
+			}
 			//<DEBUG>
 			_clbptDebug( "After insert\n");
 			show_leaves(tree->leaf, tree->record_size);
@@ -540,6 +473,8 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 			//</DEBUG>
 		}
 	}
+	_clbptDebug( "Final result\n");
+	show_leaves(tree->leaf, tree->record_size);
 
 	if (tree->num_ins == 0 && tree->num_del == 0)
 	{
@@ -694,11 +629,6 @@ int handle_node(clbpt_tree tree, void *node_addr, void *leftmost_node_addr)
 	_clbptDebug( "handle node START\n");
 	if (node->num_entry >= tree->order)	// Need to Split
 	{
-		if (node->num_entry > 2*(tree->order-1))
-		{
-			// Insertion pkts rollback to waiting buffer
-			return node->num_entry - 2*(tree->order-1);
-		}
 		node_sibling = (clbpt_leaf_node *)malloc(sizeof(clbpt_leaf_node));
 		m = half_f(node->num_entry);
 		node_sibling->num_entry = node->num_entry - m;
@@ -1004,7 +934,7 @@ int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_add
 	return num_records;
 }
 
-int insert_leaf(int32_t key, void *node_addr, void *record_addr, size_t record_size)
+int insert_leaf(int32_t key, void *node_addr, void *record_addr, size_t record_size, int order)
 {
 	int existed = 0;
 	clbpt_leaf_node *node;
@@ -1032,6 +962,11 @@ int insert_leaf(int32_t key, void *node_addr, void *record_addr, size_t record_s
 
 	if (!existed)	// Insert
 	{
+		if (node->num_entry+1 > 2*(order-1))
+		{
+			return needInsertionRollback;
+		}
+
 		entry_new = (clbpt_leaf_entry *)malloc(sizeof(clbpt_leaf_entry));
 		entry_new->key = key;
 		entry_new->record_ptr = (void *)malloc(record_size);
