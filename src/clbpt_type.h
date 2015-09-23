@@ -38,6 +38,14 @@
 #define CLBPT_WPACKET_COMPACT 7
 #define CLBPT_WPACKET_SUPER_GROUP_HANDLER 8
 
+#define GPU_BITNESS 64
+
+#if GPU_BITNESS == 32
+typedef uint32_t gpu_address_t;
+#else
+typedef uint64_t gpu_address_t;
+#endif
+
 struct _clbpt_platform {
 	cl_context context;
 	cl_command_queue queue;
@@ -55,13 +63,13 @@ typedef struct _clbpt_property {
 
 typedef struct _clbpt_entry {
 	int32_t key;
-	uintptr_t child;
+	gpu_address_t child;
 } clbpt_entry;
  
 typedef struct _clbpt_int_node {
+	gpu_address_t parent;
 	clbpt_entry entry[CLBPT_ORDER];
 	uint32_t num_entry;
-	uintptr_t parent;
 	uint32_t parent_key;
 } clbpt_int_node;
 

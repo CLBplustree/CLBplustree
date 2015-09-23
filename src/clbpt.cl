@@ -20,10 +20,12 @@ typedef struct _clbpt_entry {
 	uintptr_t child;
 } clbpt_entry;
 
+// ISSUE: Now this structure works fine. However, when the order of its content
+// changes, AMD OpenCL compiler will crash... It's quite weird.
 typedef struct _clbpt_int_node {
+	uintptr_t parent;
 	clbpt_entry entry[CLBPT_ORDER];
 	uint num_entry;
-	uintptr_t parent;
 	uint parent_key;
 } clbpt_int_node;
 
@@ -869,19 +871,12 @@ _clbptWPacketSuperGroupHandler(
 	ins_begin = 0;
 	del_begin = 0;
 	if (num_ins > 0) {
-		// ISSUE: The structure "clbpt_int_node" is illegal because
-		// it contains an array. This fact disobeys the restriction
-		// that pointer-to-pointer as kernel argument is not 
-		// allowed. Correct it and uncomment the following code.
-
-		//parent = (clbpt_int_node *)
-		//	(((clbpt_int_node *)(ins[0].target))->parent);
+		parent = (clbpt_int_node *)
+			(((clbpt_int_node *)(ins[0].target))->parent);
 	}
 	else {
-		// ISSUE: Same as above.
-
-		//parent = (clbpt_int_node *)
-		//	(((clbpt_int_node *)(del[0].target))->parent);
+		parent = (clbpt_int_node *)
+			(((clbpt_int_node *)(del[0].target))->parent);
 	}
 	for (target_branch_index = 0; target_branch_index < parent->num_entry;
 		target_branch_index++)
