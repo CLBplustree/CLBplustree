@@ -171,7 +171,7 @@ int _clbptInitialize(clbpt_tree tree)
 
 	// Allocate SVM memory for KMA
 	_clbptDebug( "kma create START\n");
-	tree->heap_size = 2048 * sizeof(void*);
+	tree->heap_size = 64 * 1024;
 	err = kma_create_svm(device, context, queue, program, tree->heap_size, &(tree->heap));
 	assert(err == CL_SUCCESS);
 	_clbptDebug( "kma create SUCCESS\n");

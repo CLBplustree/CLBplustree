@@ -648,11 +648,13 @@ _clbptWPacketBufferHandler(
 	uint num_ins_sgroup, num_del_sgroup;
 	uint is_in_sgroup;
 	uintptr_t cur_parent;
-	clk_event_t level_bar;
 	int num_kernel = 0;
+	clk_event_t level_barrier, wait_level_barrier;
 
 	ins_begin = 0;
 	del_begin = 0;
+	wait_level_barrier = create_user_event();
+	set_user_event_status(wait_level_barrier, CL_COMPLETE);
 	while (ins_begin != num_ins || del_begin != num_del) {
 		// Define cur_target
 		if (gid == 0) {
@@ -706,9 +708,9 @@ _clbptWPacketBufferHandler(
 				get_default_queue(),
 				CLK_ENQUEUE_FLAGS_NO_WAIT,
 				ndrange_1D(2 * CLBPT_ORDER, 2 * CLBPT_ORDER),
-				0,
-				(clk_event_t *)NULL,
-				&level_bar,
+				1,
+				&wait_level_barrier,
+				&level_barrier,
 				^(__local void *proc_list){
 					_clbptWPacketSuperGroupHandler(
 						proc_list,
@@ -722,28 +724,36 @@ _clbptWPacketBufferHandler(
 				},
 				2 * CLBPT_ORDER * sizeof(clbpt_entry)
 			);
-			
+			release_event(wait_level_barrier);
+			wait_level_barrier = level_barrier;
+			/*
+			if (ins_begin == 0 && del_begin == 0) {
+				enqueue_marker(get_default_queue(), 1, level_barrier, 
+					&level_barrier[1]);
+			}
+			else {
+				enqueue_marker(get_default_queue(), 2, level_barrier, 
+					&level_barrier[1]);
+			}
+			*/
 		}
 		ins_begin += num_ins_sgroup;
 		del_begin += num_del_sgroup;
 	}	
 	if (gid == 0) {
-		// ISSUE: The following barrier will lead to deadlock because
-		// this kernel is also inside the queue. Need modifying.
-
-		//enqueue_marker(get_default_queue(), 0, NULL, &level_bar);
 		enqueue_kernel(
 			get_default_queue(),
 			CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
 			ndrange_1D(MAX_LOCAL_SIZE, MAX_LOCAL_SIZE),
 			1,
-			&level_bar,
+			&wait_level_barrier,
 			NULL,
 			^{
 				_clbptWPacketCompact(ins, num_ins, del, num_del, heap,
 					property, level_proc);
 			 }
 		);
+		release_event(wait_level_barrier);
 	}
 }
 
@@ -753,7 +763,6 @@ _clbptWPacketCompact(
 	uint num_ins,
 	__global clbpt_del_pkt *del,
 	uint num_del,
-
 	__global struct clheap *heap,
 	__global clbpt_property *property,
 	uint level_proc_old
