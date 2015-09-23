@@ -45,7 +45,6 @@ void _clbptDebug(const char *Format, ...)
 
 int _clbptGetDevices(clbpt_platform platform)
 {
-	int i;
 	size_t cb;
 	cl_uint num_devices;
 	cl_context context = platform->context;
@@ -67,7 +66,7 @@ int _clbptGetDevices(clbpt_platform platform)
 
 	// Show devices info
 	/*
-	for(i = 0; i < num_devices; i++)
+	for(int i = 0; i < num_devices; i++)
 	{
 		// get device name
 		clGetDeviceInfo(devices[i], CL_DEVICE_NAME, 0, NULL, &cb);
@@ -128,7 +127,6 @@ int _clbptCreateQueues(clbpt_platform platform)
 
 int _clbptCreateKernels(clbpt_platform platform)
 {
-	int i;
 	cl_int err;
 	cl_kernel *kernels = (cl_kernel *)malloc(NUM_KERNELS * sizeof(cl_kernel));
 	char kernels_name[NUM_KERNELS][35] = {
@@ -143,7 +141,7 @@ int _clbptCreateKernels(clbpt_platform platform)
 		"_clbptWPacketSuperGroupHandler"
 	};
 
-	for(i = 0; i < NUM_KERNELS; i++)
+	for(int i = 0; i < NUM_KERNELS; i++)
 	{
 		kernels[i] = clCreateKernel(platform->program, kernels_name[i], &err);
 		if (err != CL_SUCCESS)
@@ -265,7 +263,6 @@ int _clbptInitialize(clbpt_tree tree)
 
 int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 {
-	int i;
 	uint8_t isEmpty = 1;
 
 	size_t global_work_size;
@@ -278,7 +275,7 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 	cl_kernel		kernel;
 
 	// Fill end of wait_buf with NOPs
-	for(i = tree->wait_buf_index; i < tree->buf_size; i++)
+	for(int i = tree->wait_buf_index; i < tree->buf_size; i++)
 	{
 		tree->wait_buf[i] = PACKET_NOP;
 	}
@@ -384,7 +381,6 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	assert(err == CL_SUCCESS);
 
 	// Handle leaf nodes
-	int i, j, k;
 	int node_result = 0;
 	clbpt_packet pkt;
 	int32_t key, key_upper;
@@ -396,10 +392,50 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	node_addr = tree->node_addr_buf[0];
 
 	// Scan through the execute buffer
-	for(i = 0, j = 0; i < tree->buf_size; i++)
+	for(int i = 0, j = 0; i < tree->buf_size; i++)
 	{
 		pkt = tree->execute_buf[i];
 		key = getKeyFromPacket(pkt);
+
+		if (isSearchPacket(pkt))
+		{
+			tree->instr_result_buf[i] = search_leaf(key, node_addr, tree->execute_result_buf[i], tree->record_size);
+		}
+		else if (isRangePacket(pkt))
+		{
+			key_upper = getUpperKeyFromRangePacket(pkt);
+			tree->instr_result_buf[i] = range_leaf(key, key_upper, node_addr, tree->execute_result_buf[i], tree->record_size);
+		}
+		else if (isInsertPacket(pkt))
+		{
+			_clbptDebug( "insert key = %d\n", key);
+			tree->instr_result_buf[i] = insert_leaf(key, node_addr, tree->execute_result_buf[i], tree->record_size, tree->order);
+			if (tree->instr_result_buf[i] == needInsertionRollback)
+			{
+				_clbptDebug( "Insertion ROLLBACK with key = %d\n", key);
+				while(tree->wait_buf[j] != PACKET_NOP)	// Search forward for empty space in wait buffer
+				{
+					j++;
+				}
+				tree->wait_buf[j] = tree->execute_buf[i];	// Rollback the insertion packet to wait buffer
+				tree->wait_result_buf[j] = tree->execute_result_buf[i];
+			}
+			//<DEBUG>
+			_clbptDebug( "After insert\n");
+			show_leaves(tree->leaf, tree->record_size);
+			//</DEBUG>
+		}
+		else if (isDeletePacket(pkt))
+		{
+			//<DEBUG>
+			_clbptDebug( "delete key = %d\n", key);
+			//</DEBUG>
+			tree->instr_result_buf[i] = delete_leaf(key, node_addr);
+			//<DEBUG>
+			_clbptDebug( "After delete\n");
+			show_leaves(tree->leaf, tree->record_size);
+			//</DEBUG>
+		}
 
 		if (isNopPacket(pkt) ||						// Reach the end of the execute buffer
 			i == tree->buf_size-1 ||
@@ -432,46 +468,6 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 			else
 				node_addr = tree->node_addr_buf[i];
 		}
-
-		if (isSearchPacket(pkt))
-		{
-			tree->instr_result_buf[i] = search_leaf(key, node_addr, tree->execute_result_buf[i], tree->record_size);
-		}
-		else if (isRangePacket(pkt))
-		{
-			key_upper = getUpperKeyFromRangePacket(pkt);
-			tree->instr_result_buf[i] = range_leaf(key, key_upper, node_addr, tree->execute_result_buf[i], tree->record_size);
-		}
-		else if (isInsertPacket(pkt))
-		{
-			_clbptDebug( "insert key = %d\n", key);
-			tree->instr_result_buf[i] = insert_leaf(key, node_addr, tree->execute_result_buf[i], tree->record_size, tree->order);
-			if (tree->instr_result_buf[i] == needInsertionRollback)
-			{
-				_clbptDebug( "Insert ROLLBACK\n");
-				while(tree->wait_buf[j] != PACKET_NOP)	// Search forward for empty space in wait buffer
-				{
-					j++;
-				}
-				tree->wait_buf[j] = tree->execute_buf[i];	// Rollback the insertion packet to wait buffer
-				tree->wait_result_buf[j] = tree->execute_result_buf[i];
-			}
-			//<DEBUG>
-			_clbptDebug( "After insert\n");
-			show_leaves(tree->leaf, tree->record_size);
-			//</DEBUG>
-		}
-		else if (isDeletePacket(pkt))
-		{
-			//<DEBUG>
-			_clbptDebug( "delete key = %d\n", key);
-			//</DEBUG>
-			tree->instr_result_buf[i] = delete_leaf(key, node_addr);
-			//<DEBUG>
-			_clbptDebug( "After delete\n");
-			show_leaves(tree->leaf, tree->record_size);
-			//</DEBUG>
-		}
 	}
 	_clbptDebug( "Final result\n");
 	show_leaves(tree->leaf, tree->record_size);
@@ -492,7 +488,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 		err = clEnqueueReadBuffer(queue, tree->ins_d, CL_TRUE, 0, tree->num_ins * sizeof(clbpt_ins_pkt), tree->ins, 0, NULL, NULL);
 		assert(err == CL_SUCCESS);
 		_clbptDebug( "insert packets to internal node:\n");
-		for(i = 0; i < tree->num_ins; i++)
+		for(int i = 0; i < tree->num_ins; i++)
 		{
 			_clbptDebug( "insert %d, target: %p\n", tree->ins[i].entry.key, tree->ins[i].target);
 		}
@@ -507,7 +503,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 		err = clEnqueueReadBuffer(queue, tree->del_d, CL_TRUE, 0, tree->num_del * sizeof(clbpt_del_pkt), tree->del, 0, NULL, NULL);
 		assert(err == CL_SUCCESS);
 		_clbptDebug( "delete packets to internal node:\n");
-		for(i = 0; i < tree->num_del; i++)
+		for(int i = 0; i < tree->num_del; i++)
 		{
 			_clbptDebug( "delete %d, target: %p\n", tree->del[i].key, tree->del[i].target);
 		}
@@ -548,7 +544,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 		err = clEnqueueReadBuffer(queue, tree->leafmirror_addr_d, CL_TRUE, 0, tree->num_ins * sizeof(void *), tree->leafmirror_addr, 0, NULL, NULL);
 		assert(err == CL_SUCCESS);
 
-		for(i = 0; i < tree->num_ins; i++)
+		for(int i = 0; i < tree->num_ins; i++)
 		{
 			((clbpt_leaf_node *)tree->leafnode_addr[i])->mirror = tree->leafmirror_addr[i];
 		}
