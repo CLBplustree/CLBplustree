@@ -706,7 +706,7 @@ _clbptWPacketBufferHandler(
 				ndrange_1D(2 * CLBPT_ORDER, 2 * CLBPT_ORDER),
 				0,
 				(clk_event_t *)NULL,
-				NULL,
+				&level_bar,
 				^(__local void *proc_list){
 					_clbptWPacketSuperGroupHandler(
 						proc_list,
@@ -726,30 +726,16 @@ _clbptWPacketBufferHandler(
 		del_begin += num_del_sgroup;
 	}	
 	if (gid == 0) {
-		// AMD DRIVER BUG
-		/*
-		enqueue_marker(get_default_queue(), 0, NULL, &level_bar);
+		// ISSUE: The following barrier will lead to deadlock because
+		// this kernel is also inside the queue. Need modifying.
+
+		//enqueue_marker(get_default_queue(), 0, NULL, &level_bar);
 		enqueue_kernel(
 			get_default_queue(),
 			CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
 			ndrange_1D(MAX_LOCAL_SIZE, MAX_LOCAL_SIZE),
 			1,
 			&level_bar,
-			NULL,
-			^{
-				_clbptWPacketCompact(ins, num_ins, del, num_del, heap,
-					property, level_proc);
-			 }
-		);
-		*/
-		// END OF BUG
-		// Just let it run without crash 
-		enqueue_kernel(
-			get_default_queue(),
-			CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
-			ndrange_1D(MAX_LOCAL_SIZE, MAX_LOCAL_SIZE),
-			0,
-			NULL,
 			NULL,
 			^{
 				_clbptWPacketCompact(ins, num_ins, del, num_del, heap,
@@ -795,14 +781,14 @@ _clbptWPacketCompact(
 		id = work_group_scan_exclusive_add(valid);
 		if (valid) {
 			ins[id_base + id] = ins_proc;
-		}
+		} 
 		work_group_barrier(CLK_GLOBAL_MEM_FENCE);
 		id_base += work_group_reduce_add(valid);
 	}
 	if (gid == 0)
 		num_ins = id_base;
 	work_group_barrier(CLK_GLOBAL_MEM_FENCE);
-	// Compace Delete Packet List
+	// Compact Delete Packet List
 	id_base = 0;
 	for (uint old_del_i_base = 0; old_del_i_base < num_del;
 		old_del_i_base += grsize)
@@ -883,16 +869,19 @@ _clbptWPacketSuperGroupHandler(
 	ins_begin = 0;
 	del_begin = 0;
 	if (num_ins > 0) {
-		// AMD DRIVER BUG
+		// ISSUE: The structure "clbpt_int_node" is illegal because
+		// it contains an array. This fact disobeys the restriction
+		// that pointer-to-pointer as kernel argument is not 
+		// allowed. Correct it and uncomment the following code.
+
 		//parent = (clbpt_int_node *)
 		//	(((clbpt_int_node *)(ins[0].target))->parent);
-		// END OF BUG
 	}
 	else {
-		// AMD DRIVER BUG
+		// ISSUE: Same as above.
+
 		//parent = (clbpt_int_node *)
 		//	(((clbpt_int_node *)(del[0].target))->parent);
-		// END OF BUG
 	}
 	for (target_branch_index = 0; target_branch_index < parent->num_entry;
 		target_branch_index++)
