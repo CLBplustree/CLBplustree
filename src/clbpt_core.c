@@ -394,8 +394,41 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	// Scan through the execute buffer
 	for(int i = 0, j = 0; i < tree->buf_size; i++)
 	{
+		fprintf(stderr, "node_addr = %p\n", tree->node_addr_buf[i]);
 		pkt = tree->execute_buf[i];
 		key = getKeyFromPacket(pkt);
+
+		if (isNopPacket(pkt) ||						// Reach the end of the execute buffer
+			i == tree->buf_size-1 ||
+			node_addr != tree->node_addr_buf[i])	// Accessed node changed	
+		{
+			if (i == 0)	// Do nothing if the execute buffer is empty
+				break;
+
+			node_result = handle_node(tree, node_addr, leftmost_node_addr);	// Handle the last operated node
+
+			if (node_result == leftMostNodeBorrowMerge)
+			{
+				leftmost_node_addr = node_addr;
+			}
+			else if (node_result == mergeWithLeftMostNode)
+			{
+				leftmost_node_addr = NULL;
+			}
+
+			if (leftmost_node_addr != NULL &&
+				((clbpt_leaf_node *)node_addr)->mirror->parent !=
+				((clbpt_leaf_node *)leftmost_node_addr)->mirror->parent)	// node's parent is different with leftmost node's, handle leftmost node
+			{
+				handle_leftmost_node(tree, leftmost_node_addr);
+				leftmost_node_addr = NULL;
+			}
+
+			if (isNopPacket(pkt) || i == tree->buf_size-1)	// Reach the end of the execute buffer
+				break;
+			else
+				node_addr = tree->node_addr_buf[i];
+		}
 
 		if (isSearchPacket(pkt))
 		{
@@ -437,37 +470,6 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 			//</DEBUG>
 		}
 
-		if (isNopPacket(pkt) ||						// Reach the end of the execute buffer
-			i == tree->buf_size-1 ||
-			node_addr != tree->node_addr_buf[i])	// Accessed node changed	
-		{
-			if (i == 0)	// Do nothing if the execute buffer is empty
-				break;
-
-			node_result = handle_node(tree, node_addr, leftmost_node_addr);	// Handle the last operated node
-
-			if (node_result == leftMostNodeBorrowMerge)
-			{
-				leftmost_node_addr = node_addr;
-			}
-			else if (node_result == mergeWithLeftMostNode)
-			{
-				leftmost_node_addr = NULL;
-			}
-
-			if (leftmost_node_addr != NULL &&
-				((clbpt_leaf_node *)node_addr)->mirror->parent !=
-				((clbpt_leaf_node *)leftmost_node_addr)->mirror->parent)	// node's parent is different with leftmost node's, handle leftmost node
-			{
-				handle_leftmost_node(tree, leftmost_node_addr);
-				leftmost_node_addr = NULL;
-			}
-
-			if (isNopPacket(pkt) || i == tree->buf_size-1)	// Reach the end of the execute buffer
-				break;
-			else
-				node_addr = tree->node_addr_buf[i];
-		}
 	}
 	_clbptDebug( "Final result\n");
 	show_leaves(tree->leaf, tree->record_size);
@@ -537,7 +539,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 
 	_clbptDebug( "enqueue wpacket init SUCCESS\n");
 	err = clEnqueueReadBuffer(queue, tree->property_d, CL_TRUE, 0, sizeof(clbpt_property), (tree->property), 0, NULL, NULL);
-
+	
 	// Assign leafmirror_addr to node_sibling's parent
 	if (tree->num_ins > 0)
 	{
@@ -552,7 +554,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 
 	_clbptDebug( "leafmirror_addr assign SUCCESS\n");
 
-	//_clbptPrintTree(tree->property, tree->record_size);
+	_clbptPrintTree(tree->property, tree->record_size);
 
 	return CL_SUCCESS;
 }

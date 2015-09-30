@@ -921,8 +921,8 @@ _clbptWPacketSuperGroupHandler(
 		num_del_group = work_group_reduce_add(is_in_group);
 		if (num_ins_group == 0 && num_del_group == 0)
 			continue;
-		_clbptWPacketGroupHandler(proc_list, ins + ins_begin, num_ins,
-			del + del_begin, num_del, heap, parent, target_branch_index,
+		_clbptWPacketGroupHandler(proc_list, ins + ins_begin, num_ins_group,
+			del + del_begin, num_del_group, heap, parent, target_branch_index,
 			(clbpt_int_node *)cur_target, sibling, aboveMirror);
 		ins_begin += num_ins_group;
 		del_begin += num_del_group;
