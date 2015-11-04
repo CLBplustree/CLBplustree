@@ -948,7 +948,6 @@ _clbptWPacketGroupHandler(
 
 	// Clear proc_list
 	proc_list[gid] = ENTRY_NULL;
-	proc_list[CLBPT_ORDER + gid] = ENTRY_NULL;
 	work_group_barrier(CLK_LOCAL_MEM_FENCE);
 	
 	// Copy the target node into proc_list
@@ -1299,7 +1298,7 @@ _clbptWPacketBufferRootHandler(
 
 	// Clear proc_list
 	proc_list[gid] = ENTRY_NULL;
-	proc_list[CLBPT_ORDER + gid] = ENTRY_NULL;
+	work_group_barrier(CLK_LOCAL_MEM_FENCE);
 
 	// Copy the target node into proc_list
 	if (num_ins != 0) {
