@@ -1399,12 +1399,51 @@ _clbptWPacketBufferRootHandler(
 	}
 	else {
 		// Need upleveling
-		clbpt_int_node *new_root;
-		clbpt_int_node *new_sibling;
+		// Step1. Allocate a new node
+		clbpt_int_node *new_root, *new_sibling;
 		if (gid == 0) {
 			new_root = (clbpt_int_node *)malloc(heap, sizeof(clbpt_int_node));
-			new_sibling = (clbpt_int_node *)malloc
-				(heap, sizeof(clbpt_int_node));
+			new_sibling = (clbpt_int_node *)malloc(heap, sizeof(clbpt_int_node));
+		}
+		work_group_barrier(0);
+		new_root = (clbpt_int_node *)
+			work_group_broadcast((uintptr_t)new_root, 0);
+		new_sibling = (clbpt_int_node *)
+			work_group_broadcast((uintptr_t)new_sibling, 0);
+
+		// Step2. Refresh entries
+		if (gid < half_c(proc_num_entry)) {
+			target->entry[gid] = proc_list[gid];
+		}
+		else if (gid == half_c(proc_num_entry)) {
+			new_sibling->entry[0].key = KEY_MIN;
+			new_sibling->entry[0].child = (uintptr_t)proc_list[gid].child;
+			if (property->level == 2)
+				((clbpt_leafmirror *)proc_list[gid].child)->parent = 
+					(uintptr_t)new_sibling;
+			else {
+				((clbpt_int_node *)proc_list[gid].child)->parent = 
+					(uintptr_t)new_sibling;
+				((clbpt_int_node *)proc_list[gid].child)->parent_key = 
+					KEY_MIN;
+			}
+		}
+		else if (gid < proc_num_entry) {
+			new_sibling->entry[gid - half_c(proc_num_entry)] =
+				proc_list[gid];
+			if (property->level == 2)
+				((clbpt_leafmirror *)proc_list[gid].child)->parent = 
+					(uintptr_t)new_sibling;
+			else {
+				((clbpt_int_node *)proc_list[gid].child)->parent = 
+					(uintptr_t)new_sibling;
+			}
+		}
+
+		// Step3. Create new root & refresh meta-data
+		if (gid == 0) {
+			target->num_entry = half_c(proc_num_entry);
+			target->parent = (uintptr_t)new_root;
 			property->root = (uintptr_t)new_root;
 			property->level += 1;
 			new_root->parent = (uintptr_t)property;
@@ -1414,42 +1453,9 @@ _clbptWPacketBufferRootHandler(
 			new_root->entry[0].child = (uintptr_t)target;
 			new_root->entry[1].key = proc_list[half_c(proc_num_entry)].key;
 			new_root->entry[1].child = (uintptr_t)new_sibling;
-			target->parent = (uintptr_t)new_root;
-			target->num_entry = half_c(proc_num_entry);
 			new_sibling->parent = (uintptr_t)new_root;
 			new_sibling->parent_key = proc_list[half_c(proc_num_entry)].key;
 			new_sibling->num_entry = proc_num_entry - half_c(proc_num_entry);
-		}
-		work_group_barrier(0);
-		new_root = (clbpt_int_node *)work_group_broadcast((uintptr_t)new_root, 0);
-		new_sibling = (clbpt_int_node *)work_group_broadcast((uintptr_t)new_sibling, 0);
-		if (gid < proc_num_entry - half_c(proc_num_entry)) {
-			if (gid == 0) {
-				new_sibling->entry[0].key = KEY_MIN;
-				new_sibling->entry[0].child =
-					proc_list[half_c(proc_num_entry)].child;
-				if (property->level == 3) {
-					((clbpt_leafmirror *)new_sibling->entry[gid].child)
-						->parent = (uintptr_t)new_sibling;
-				}
-				else {
-					((clbpt_int_node *)new_sibling->entry[gid].child)
-						->parent = (uintptr_t)new_sibling;
-					((clbpt_int_node *)new_sibling->entry[gid].child)
-						->parent_key = KEY_MIN;
-				}
-				
-			}
-			else {
-				new_sibling->entry[gid] = proc_list
-					[half_c(proc_num_entry) + gid];
-				if (property->level == 3)
-					((clbpt_leafmirror *)new_sibling->entry[gid].child)
-						->parent = (uintptr_t)new_sibling;
-				else
-					((clbpt_int_node *)new_sibling->entry[gid].child)
-						->parent = (uintptr_t)new_sibling;
-			}
 		}
 	}
 }
