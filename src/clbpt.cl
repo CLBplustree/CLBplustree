@@ -583,8 +583,14 @@ _clbptWPacketInit(
 	// Initialize Insert Packet
 	if (gid < num_ins) {
 		clbpt_leafmirror *new_alloc;
-
-		new_alloc = (clbpt_leafmirror *)malloc(heap, sizeof(clbpt_leafmirror));
+		
+		for (int i = 0; i < num_ins; i++) {
+			if (i == gid) {
+				new_alloc = 
+					(clbpt_leafmirror *)malloc(heap, sizeof(clbpt_leafmirror));
+			}
+			work_group_barrier(0);
+		}
 		new_alloc->leaf = addr[gid];
 		new_alloc->parent = ((clbpt_leafmirror *)(ins[gid].target))->parent;
 		ins[gid].target = ((clbpt_leafmirror *)(ins[gid].target))->parent;
