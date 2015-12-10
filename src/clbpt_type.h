@@ -173,7 +173,6 @@ struct _clbpt_tree {
 
 	cl_mem ins_d;
 	cl_mem del_d;
-	cl_mem leafnode_addr_d;
 	cl_mem leafmirror_addr_d;
 
 	void *heap;					// For internal node, allocate SVM for KMA

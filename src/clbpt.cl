@@ -567,9 +567,7 @@ _clbptSearch(
  */
 __kernel void
 _clbptWPacketInit(
-
 	__global clbpt_ins_pkt *ins,
-	__global cpu_address_t *addr,
 	__global uintptr_t *leafmirror_addr,
 	uint num_ins,
 	__global clbpt_del_pkt *del,
@@ -587,7 +585,6 @@ _clbptWPacketInit(
 		
 		new_alloc = 
 			(clbpt_leafmirror *)malloc(heap, sizeof(clbpt_leafmirror));
-		new_alloc->leaf = addr[gid];
 		new_alloc->parent = ((clbpt_leafmirror *)(ins[gid].target))->parent;
 		ins[gid].target = ((clbpt_leafmirror *)(ins[gid].target))->parent;
 		ins[gid].entry.child = (uintptr_t)new_alloc;
@@ -755,6 +752,7 @@ _clbptWPacketBufferHandler(
 			 }
 		);
 	}
+	release_event(level_barrier);
 }
 
 __kernel void

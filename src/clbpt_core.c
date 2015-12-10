@@ -171,7 +171,7 @@ int _clbptInitialize(clbpt_tree tree)
 
 	// Allocate SVM memory for KMA
 	_clbptDebug( "kma create START\n");
-	tree->heap_size = 64 * 1024 * 1024;
+	tree->heap_size = 128 * 1024 * 1024;
 	err = kma_create_svm(device, context, queue, tree->heap_size, &(tree->heap));
 	assert(err == CL_SUCCESS);
 	_clbptDebug( "kma create SUCCESS\n");
@@ -234,8 +234,6 @@ int _clbptInitialize(clbpt_tree tree)
 	tree->ins_d = clCreateBuffer(context, 0, tree->buf_size * sizeof(clbpt_ins_pkt), NULL, &err);
 	assert(err == CL_SUCCESS);
 	tree->del_d = clCreateBuffer(context, 0, tree->buf_size * sizeof(clbpt_del_pkt), NULL, &err);
-	assert(err == CL_SUCCESS);
-	tree->leafnode_addr_d = clCreateBuffer(context, 0, tree->buf_size * sizeof(void *), NULL, &err);
 	assert(err == CL_SUCCESS);
 	tree->leafmirror_addr_d = clCreateBuffer(context, 0, tree->buf_size * sizeof(void *), NULL, &err);
 	assert(err == CL_SUCCESS);
@@ -482,24 +480,12 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	if (tree->num_ins > 0)
 	{
 		for (int i = 0; i < tree->num_ins; i++) {
-			printf("Insert packet %d\n", tree->ins[i].entry.key);
+			//printf("Insert packet %d\n", tree->ins[i].entry.key);
 		}
 
 
 		err = clEnqueueWriteBuffer(queue, tree->ins_d, CL_TRUE, 0, tree->num_ins * sizeof(clbpt_ins_pkt), tree->ins, 0, NULL, NULL);
 		assert(err == CL_SUCCESS);
-		err = clEnqueueWriteBuffer(queue, tree->leafnode_addr_d, CL_TRUE, 0, tree->num_ins * sizeof(void *), tree->leafnode_addr, 0, NULL, NULL);
-		assert(err == CL_SUCCESS);
-
-		err = clEnqueueWriteBuffer(queue, tree->leafnode_addr_d, CL_TRUE, 0, tree->num_ins * sizeof(void *), tree->leafnode_addr, 0, NULL, NULL);
-		assert(err == CL_SUCCESS);
-		for (int i = 0; i < tree->num_ins; i++) {
-			if ((uint64_t)(tree->leafnode_addr[i]) > 0xffffffffffff) {
-				printf("Error packet: %d %p\n", tree->ins[i].entry.key,
-					tree->leafnode_addr[i]);
-				assert(0);
-			}
-		}
 		//<DEBUG>
 		/*
 		err = clEnqueueReadBuffer(queue, tree->ins_d, CL_TRUE, 0, tree->num_ins * sizeof(clbpt_ins_pkt), tree->ins, 0, NULL, NULL);
@@ -532,19 +518,17 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	kernel = kernels[CLBPT_WPACKET_INIT];
 	err = clSetKernelArg(kernel, 0, sizeof(tree->ins_d), (void *)&tree->ins_d);
 	assert(err == CL_SUCCESS);
-	err = clSetKernelArg(kernel, 1, sizeof(tree->leafnode_addr_d), (void *)&tree->leafnode_addr_d);
+	err = clSetKernelArg(kernel, 1, sizeof(tree->leafmirror_addr_d), (void *)&tree->leafmirror_addr_d);
 	assert(err == CL_SUCCESS);
-	err = clSetKernelArg(kernel, 2, sizeof(tree->leafmirror_addr_d), (void *)&tree->leafmirror_addr_d);
+	err = clSetKernelArg(kernel, 2, sizeof(tree->num_ins), (void *)&tree->num_ins);
 	assert(err == CL_SUCCESS);
-	err = clSetKernelArg(kernel, 3, sizeof(tree->num_ins), (void *)&tree->num_ins);
+	err = clSetKernelArg(kernel, 3, sizeof(tree->del_d), (void *)&tree->del_d);
 	assert(err == CL_SUCCESS);
-	err = clSetKernelArg(kernel, 4, sizeof(tree->del_d), (void *)&tree->del_d);
+	err = clSetKernelArg(kernel, 4, sizeof(tree->num_del), (void *)&tree->num_del);
 	assert(err == CL_SUCCESS);
-	err = clSetKernelArg(kernel, 5, sizeof(tree->num_del), (void *)&tree->num_del);
+	err = clSetKernelArgSVMPointer(kernel, 5, tree->heap);
 	assert(err == CL_SUCCESS);
-	err = clSetKernelArgSVMPointer(kernel, 6, tree->heap);
-	assert(err == CL_SUCCESS);
-	err = clSetKernelArg(kernel, 7, sizeof(tree->property_d), (void *)&tree->property_d);
+	err = clSetKernelArg(kernel, 6, sizeof(tree->property_d), (void *)&tree->property_d);
 	assert(err == CL_SUCCESS);
 
 	// WPacketInit
@@ -565,13 +549,14 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 		for(int i = 0; i < tree->num_ins; i++)
 		{
 			((clbpt_leaf_node *)tree->leafnode_addr[i])->mirror = tree->leafmirror_addr[i];
+			((clbpt_leafmirror *)tree->leafmirror_addr[i])->leaf = 
+				tree->leafnode_addr[i];
 		}
 	}
 
 	_clbptDebug( "leafmirror_addr assign SUCCESS\n");
 	
-	clFinish(queue);
-	_clbptPrintTree(tree->property, tree->record_size);
+	//_clbptPrintTree(tree->property, tree->record_size);
 
 	return CL_SUCCESS;
 }
@@ -627,7 +612,6 @@ int _clbptReleaseLeaf(clbpt_tree tree)
 
 	clReleaseMemObject(tree->ins_d);
 	clReleaseMemObject(tree->del_d);
-	clReleaseMemObject(tree->leafnode_addr_d);
 	clReleaseMemObject(tree->leafmirror_addr_d);
 
 	clSVMFree(tree->platform->context, tree->heap);
