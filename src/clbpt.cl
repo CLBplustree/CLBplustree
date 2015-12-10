@@ -1,4 +1,4 @@
-﻿#include "clIndexedQueue.cl"
+﻿//#include "clIndexedQueue.cl"
 #include "kma.cl"
 
 // Temporary. Replace this by compiler option later.
@@ -580,17 +580,13 @@ _clbptWPacketInit(
 {
 	uint gid = get_global_id(0);
 
+	//if (gid == 0) printf("Init\n");
 	// Initialize Insert Packet
 	if (gid < num_ins) {
 		clbpt_leafmirror *new_alloc;
 		
-		for (int i = 0; i < num_ins; i++) {
-			if (i == gid) {
-				new_alloc = 
-					(clbpt_leafmirror *)malloc(heap, sizeof(clbpt_leafmirror));
-			}
-			work_group_barrier(0);
-		}
+		new_alloc = 
+			(clbpt_leafmirror *)malloc(heap, sizeof(clbpt_leafmirror));
 		new_alloc->leaf = addr[gid];
 		new_alloc->parent = ((clbpt_leafmirror *)(ins[gid].target))->parent;
 		ins[gid].target = ((clbpt_leafmirror *)(ins[gid].target))->parent;
@@ -603,6 +599,7 @@ _clbptWPacketInit(
 		del[gid].target = (clbpt_int_node *)mirror->parent;
 		free(heap, (uintptr_t)mirror);
 	}
+	work_group_barrier(CLK_GLOBAL_MEM_FENCE);
 	// Handle them
 	if (gid == 0) {
 		int level_proc = property->level - 2;
@@ -655,12 +652,10 @@ _clbptWPacketBufferHandler(
 	uint is_in_sgroup;
 	uintptr_t cur_parent;
 	int num_kernel = 0;
-	clk_event_t level_barrier, wait_level_barrier;
+	clk_event_t level_barrier, next_barrier;
 
 	ins_begin = 0;
 	del_begin = 0;
-	wait_level_barrier = create_user_event();
-	set_user_event_status(wait_level_barrier, CL_COMPLETE);
 	while (ins_begin != num_ins || del_begin != num_del) {
 		// Define cur_target
 		if (gid == 0) {
@@ -715,8 +710,8 @@ _clbptWPacketBufferHandler(
 				CLK_ENQUEUE_FLAGS_NO_WAIT,
 				ndrange_1D(2 * CLBPT_ORDER, 2 * CLBPT_ORDER),
 				1,
-				&wait_level_barrier,
 				&level_barrier,
+				&next_barrier,
 				^(__local void *proc_list){
 					_clbptWPacketSuperGroupHandler(
 						proc_list,
@@ -730,8 +725,8 @@ _clbptWPacketBufferHandler(
 				},
 				2 * CLBPT_ORDER * sizeof(clbpt_entry)
 			);
-			release_event(wait_level_barrier);
-			wait_level_barrier = level_barrier;
+			release_event(level_barrier);
+			level_barrier = next_barrier;
 			/*
 			if (ins_begin == 0 && del_begin == 0) {
 				enqueue_marker(get_default_queue(), 1, level_barrier, 
@@ -749,17 +744,16 @@ _clbptWPacketBufferHandler(
 	if (gid == 0) {
 		enqueue_kernel(
 			get_default_queue(),
-			CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
+			CLK_ENQUEUE_FLAGS_NO_WAIT,
 			ndrange_1D(MAX_LOCAL_SIZE, MAX_LOCAL_SIZE),
 			1,
-			&wait_level_barrier,
+			&level_barrier,
 			NULL,
 			^{
 				_clbptWPacketCompact(ins, num_ins, del, num_del, heap,
 					property, level_proc);
 			 }
 		);
-		release_event(wait_level_barrier);
 	}
 }
 
@@ -834,7 +828,7 @@ _clbptWPacketCompact(
 		if (level_proc > 0) {
 			enqueue_kernel(
 				get_default_queue(),
-				CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
+				CLK_ENQUEUE_FLAGS_NO_WAIT,
 				ndrange_1D(2 * CLBPT_ORDER, 2 * CLBPT_ORDER),
 				^{
 					_clbptWPacketBufferHandler(ins,	num_ins, del, num_del,
@@ -842,11 +836,11 @@ _clbptWPacketCompact(
 				 }
 			);
 		}
-		else if (level_proc == 0) {
+		else  {
 			// Handle root node layer
 			enqueue_kernel(
 				get_default_queue(),
-				CLK_ENQUEUE_FLAGS_WAIT_KERNEL,
+				CLK_ENQUEUE_FLAGS_NO_WAIT,
 				ndrange_1D(2 * CLBPT_ORDER, 2 * CLBPT_ORDER),
 				^(__local void *proc_list){
 					_clbptWPacketBufferRootHandler(proc_list, ins, num_ins, del,
@@ -855,11 +849,9 @@ _clbptWPacketCompact(
 				2 * CLBPT_ORDER * sizeof(clbpt_entry)
 			);
 		}
-		else {
-			// Handle pre-root stage
-			_clbptWPacketBufferPreRootHandler(ins, heap, property);
-		}
 	}
+	//else if (gid == 0)
+	//	printf("Done\n");
 }
 
 __kernel void
@@ -1034,6 +1026,7 @@ _clbptWPacketGroupHandler(
 	if (gid < num_del) {
 		del[gid].target = 0;
 	}
+	work_group_barrier(CLK_GLOBAL_MEM_FENCE);
 
 	// Handle "proc".	
 	if (target_branch_index != 0 &&

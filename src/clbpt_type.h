@@ -21,7 +21,7 @@
 						// of MAX_LOCAL_SIZE
 
 //#define CLBPT_BUF_SIZE 65536
-#define CLBPT_BUF_SIZE 20
+#define CLBPT_BUF_SIZE 512
 
 #define CLBPT_STATUS_DONE 0
 #define CLBPT_STATUS_WAIT 1

@@ -43,7 +43,7 @@ void _clbptLoadProgram(clbpt_platform platform, char *filename)
 		clGetProgramBuildInfo(platform->program, platform->devices[0], CL_PROGRAM_BUILD_LOG, 0, NULL, &len);
 		buffer = calloc(sizeof(char), len);
 		clGetProgramBuildInfo(platform->program, platform->devices[0], CL_PROGRAM_BUILD_LOG, len, buffer, NULL);
-		_clbptDebug( "Error Build Program %d: %s\n", err, buffer);
+		printf( "Error Build Program %d: %s\n", err, buffer);
 		exit(-1);
 	}
 }

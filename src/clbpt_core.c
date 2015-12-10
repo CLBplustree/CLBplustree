@@ -28,7 +28,7 @@ void show_leaves(clbpt_leaf_node *leaf, size_t record_size);	// function for tes
 void _clbptPrintTree(clbpt_property *property, size_t record_size);
 //void show_tree(clbpt_tree tree);
 
-int clbpt_debug = 1;
+int clbpt_debug = 0;
 
 va_list ap;
 
@@ -171,8 +171,8 @@ int _clbptInitialize(clbpt_tree tree)
 
 	// Allocate SVM memory for KMA
 	_clbptDebug( "kma create START\n");
-	tree->heap_size = 64 * 1024;
-	err = kma_create_svm(device, context, queue, program, tree->heap_size, &(tree->heap));
+	tree->heap_size = 64 * 1024 * 1024;
+	err = kma_create_svm(device, context, queue, tree->heap_size, &(tree->heap));
 	assert(err == CL_SUCCESS);
 	_clbptDebug( "kma create SUCCESS\n");
 
@@ -394,7 +394,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	// Scan through the execute buffer
 	for(int i = 0, j = 0; i < tree->buf_size; i++)
 	{
-		fprintf(stderr, "node_addr = %p\n", tree->node_addr_buf[i]);
+		//fprintf(stderr, "node_addr = %p\n", tree->node_addr_buf[i]);
 		pkt = tree->execute_buf[i];
 		key = getKeyFromPacket(pkt);
 
@@ -455,7 +455,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 			}
 			//<DEBUG>
 			_clbptDebug( "After insert\n");
-			show_leaves(tree->leaf, tree->record_size);
+			//show_leaves(tree->leaf, tree->record_size);
 			//</DEBUG>
 		}
 		else if (isDeletePacket(pkt))
@@ -466,13 +466,13 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 			tree->instr_result_buf[i] = delete_leaf(key, node_addr);
 			//<DEBUG>
 			_clbptDebug( "After delete\n");
-			show_leaves(tree->leaf, tree->record_size);
+			//show_leaves(tree->leaf, tree->record_size);
 			//</DEBUG>
 		}
 
 	}
 	_clbptDebug( "Final result\n");
-	show_leaves(tree->leaf, tree->record_size);
+	//show_leaves(tree->leaf, tree->record_size);
 
 	if (tree->num_ins == 0 && tree->num_del == 0)
 	{
@@ -481,19 +481,35 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 
 	if (tree->num_ins > 0)
 	{
+		for (int i = 0; i < tree->num_ins; i++) {
+			printf("Insert packet %d\n", tree->ins[i].entry.key);
+		}
+
+
 		err = clEnqueueWriteBuffer(queue, tree->ins_d, CL_TRUE, 0, tree->num_ins * sizeof(clbpt_ins_pkt), tree->ins, 0, NULL, NULL);
 		assert(err == CL_SUCCESS);
 		err = clEnqueueWriteBuffer(queue, tree->leafnode_addr_d, CL_TRUE, 0, tree->num_ins * sizeof(void *), tree->leafnode_addr, 0, NULL, NULL);
 		assert(err == CL_SUCCESS);
 
+		err = clEnqueueWriteBuffer(queue, tree->leafnode_addr_d, CL_TRUE, 0, tree->num_ins * sizeof(void *), tree->leafnode_addr, 0, NULL, NULL);
+		assert(err == CL_SUCCESS);
+		for (int i = 0; i < tree->num_ins; i++) {
+			if ((uint64_t)(tree->leafnode_addr[i]) > 0xffffffffffff) {
+				printf("Error packet: %d %p\n", tree->ins[i].entry.key,
+					tree->leafnode_addr[i]);
+				assert(0);
+			}
+		}
 		//<DEBUG>
+		/*
 		err = clEnqueueReadBuffer(queue, tree->ins_d, CL_TRUE, 0, tree->num_ins * sizeof(clbpt_ins_pkt), tree->ins, 0, NULL, NULL);
 		assert(err == CL_SUCCESS);
-		_clbptDebug( "insert packets to internal node:\n");
+		printf( "insert packets to internal node:\n");
 		for(int i = 0; i < tree->num_ins; i++)
 		{
 			_clbptDebug( "insert %d, target: %p\n", tree->ins[i].entry.key, tree->ins[i].target);
 		}
+		*/
 		//</DEBUG>
 	}
 	if (tree->num_del > 0)
@@ -553,7 +569,8 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	}
 
 	_clbptDebug( "leafmirror_addr assign SUCCESS\n");
-
+	
+	clFinish(queue);
 	_clbptPrintTree(tree->property, tree->record_size);
 
 	return CL_SUCCESS;
@@ -631,7 +648,7 @@ int handle_node(clbpt_tree tree, void *node_addr, void *leftmost_node_addr)
 		m = half_f(node->num_entry);
 		node_sibling->num_entry = node->num_entry - m;
 		node->num_entry = m;
-		printf("split result: %d, %d\n", node->num_entry, node_sibling->num_entry);
+		//printf("split result: %d, %d\n", node->num_entry, node_sibling->num_entry);
 
 		entry_head = node->head;
 		for(; m > 0; m--)
@@ -1088,9 +1105,9 @@ void _clbptPrintLeaf(int level, clbpt_leaf_node *leaf, size_t record_size)	// fu
 	clbpt_leaf_entry *entry;
 
 	for (int i = 0; i < level; i++) {
-		_clbptDebug( " ");
+		printf( " ");
 	}
-	_clbptDebug( "Leaf:%p (mirror=%p) ", leaf, leaf->mirror);
+	printf( "Leaf:%p (mirror=%p) ", leaf, leaf->mirror);
 	count = leaf->num_entry;
 	entry = leaf->head;
 	while (count-- > 0)
@@ -1098,21 +1115,21 @@ void _clbptPrintLeaf(int level, clbpt_leaf_node *leaf, size_t record_size)	// fu
 		switch (record_size)
 		{
 			case sizeof(char):
-				_clbptDebug( "|(key: %d, rec: %c)", entry->key, *((char *)entry->record_ptr));
+				printf( "|(key: %d, rec: %c)", entry->key, *((char *)entry->record_ptr));
 				break;
 			case sizeof(int):
-				_clbptDebug( "|(key: %d, rec: %d)", entry->key, *((int *)entry->record_ptr));
+				printf( "|(key: %d, rec: %d)", entry->key, *((int *)entry->record_ptr));
 				break;
 			case sizeof(double):
-				_clbptDebug( "|(key: %d, rec: %lf)", entry->key, *((double *)entry->record_ptr));
+				printf( "|(key: %d, rec: %lf)", entry->key, *((double *)entry->record_ptr));
 				break;
 			default:
 				break;
 		}
 		entry = entry->next;
 	}
-	_clbptDebug( "|   ");
-	_clbptDebug( "\n");
+	printf( "|   ");
+	printf( "\n");
 
 }
 
@@ -1124,8 +1141,8 @@ _clbptPrintMirror(
 	)
 {
 	for (int i = 0; i < level; i++)
-		_clbptDebug( " ");
-	_clbptDebug( "Mirror:%p (parent=%p, leaf=%p)\n",
+		printf( " ");
+	printf( "Mirror:%p (parent=%p, leaf=%p)\n",
 		(void *)mirror, (void *)mirror->parent, mirror->leaf);
 	_clbptPrintLeaf(level + 1, mirror->leaf, record_size);
 }
@@ -1139,15 +1156,15 @@ _clbptPrintNode(
 	)
 {
 	for (int i = 0; i < level_proc; i++)
-		_clbptDebug( " ");
-	_clbptDebug( "Node:%p (num_entry=%u, parent=%p, parent_key=%d)\n",
+		printf( " ");
+	printf( "Node:%p (num_entry=%u, parent=%p, parent_key=%d)\n",
 		(void *)node, node->num_entry, (void *)node->parent,
 		getKey(node->parent_key));
 	if (level_proc < level_tree - 2)
 	for (int i = 0; i < node->num_entry; i++) {
 		for (int j = 0; j < level_proc; j++)
-			_clbptDebug( " ");
-		_clbptDebug( ">Entry #%d (key=%d, child=%p)\n",
+			printf( " ");
+		printf( ">Entry #%d (key=%d, child=%p)\n",
 			i, getKey(node->entry[i].key), (void *)node->entry[i].child);
 		_clbptPrintNode(level_proc + 1, level_tree,
 			(clbpt_int_node *)node->entry[i].child,
@@ -1156,8 +1173,8 @@ _clbptPrintNode(
 	else
 	for (int i = 0; i < node->num_entry; i++) {
 		for (int j = 0; j < level_proc; j++)
-			_clbptDebug( " ");
-		_clbptDebug( ">Entry #%d (key=%d, child=%p)\n",
+			printf( " ");
+		printf( ">Entry #%d (key=%d, child=%p)\n",
 			i, getKey(node->entry[i].key), (void *)node->entry[i].child);
 		_clbptPrintMirror(level_proc + 1,
 			(clbpt_leafmirror *)node->entry[i].child,
@@ -1175,13 +1192,13 @@ _clbptPrintTree(
 	int level = property->level;
 	uintptr_t root = (uintptr_t)property->root;
 
-	_clbptDebug( "### Traversal of GPU-side tree ###\n");
-	_clbptDebug( "Level of tree: %d\n", level);
+	printf( "### Traversal of GPU-side tree ###\n");
+	printf( "Level of tree: %d\n", level);
 	if (level <= 1)
 		_clbptPrintMirror(0, (clbpt_leafmirror *)root, record_size);
 	else
 		_clbptPrintNode(0, level, (clbpt_int_node *)root, record_size);
-	_clbptDebug( "### End of traversal ###\n");
+	printf( "### End of traversal ###\n");
 }
 
 void show_pkt_buf(clbpt_packet *pkt_buf, uint32_t buf_size)

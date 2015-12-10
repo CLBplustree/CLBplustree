@@ -1,234 +1,155 @@
-/**
- * kma.c
- * Implementation of a Superblock-based malloc routine in OpenCL
- * Copyright (C) 2013-2014 Roy Spliet
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301
- * USA
- */
-
-#include <CL/opencl.h>
-#include <stddef.h>
+#include "kma.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
+#include <assert.h>
+#include <sys/time.h>
+#include <CL/cl.h>
 
-#include "kma.h"
+// Macros
+#define PROGRAM_FILENAME "kma.cl"
+#define NUM_KERNELS 1
 
-/* XXX: Only works on true 64 bit arch */
-cl_mem
-_kma_create_64(cl_context ctx, cl_command_queue cq, unsigned int sblocks) {
-	cl_mem gQ;
-	cl_int error;
-	struct kma_heap_64 localHeap;
+char kernels_name[][128] = {
+	"initializeClheap"
+};
 
-	localHeap.bytes = (sblocks * KMA_SB_SIZE) + (sizeof(struct kma_heap_64));
-	gQ = clCreateBuffer(ctx, CL_MEM_READ_WRITE, localHeap.bytes, NULL, &error);
-	if(error != CL_SUCCESS) {
-		printf("KMA: Could not allocate heap on-device\n");
-		return (cl_mem) 0;
-	}
+cl_program clLoadProgram(cl_context context, cl_device_id device, const char* filename);
 
-	error = clEnqueueWriteBuffer(cq, gQ, 0, 0, sizeof(struct kma_heap_64), &localHeap, 0, NULL, NULL);
-	if(error != CL_SUCCESS) {
-		printf("KMA: Could not setup heap on device\n");
-		return (cl_mem) 0;
-	}
+int clCreateKernels(cl_program program, cl_kernel **kernels_ptr);
 
-	clFinish(cq);
+int clReleaseKernels(cl_kernel *kernels);
 
-	return gQ;
-}
-
-cl_mem
-_kma_create_32(cl_context ctx, cl_command_queue cq, unsigned int sblocks) {
-	cl_mem gQ;
-	cl_int error;
-	struct kma_heap_32 localHeap;
-
-	localHeap.bytes = (sblocks * KMA_SB_SIZE) + (sizeof(struct kma_heap_32));
-	gQ = clCreateBuffer(ctx, CL_MEM_READ_WRITE, localHeap.bytes, NULL, &error);
-	if(error != CL_SUCCESS) {
-		printf("KMA: Could not allocate heap on-device\n");
-		return (cl_mem) 0;
-	}
-
-	error = clEnqueueWriteBuffer(cq, gQ, 0, 0, sizeof(struct kma_heap_32), &localHeap, 0, NULL, NULL);
-	if(error != CL_SUCCESS) {
-		printf("KMA: Could not setup heap on device\n");
-		return (cl_mem) 0;
-	}
-
-	clFinish(cq);
-
-	return gQ;
-}
-
-cl_mem
-kma_create(cl_device_id dev, cl_context ctx, cl_command_queue cq,
-		cl_program prg, unsigned int sblocks)
+int kma_create_svm(cl_device_id device, cl_context context, cl_command_queue queue, uint64_t size, void **clheap)
 {
-	cl_int error;
-	cl_uint bits;
-	cl_mem q;
-	cl_kernel kernel;
-	const size_t threads = 1;
+	// OpenCL Variables
+	cl_program program;
+	cl_kernel *kernels;
+	size_t cb;
+	cl_int err;
+	cl_uint num;
+	size_t global_work_size[1] = {1};
+	size_t local_work_size[1] = {1};
 
-	if(sblocks == 0)
-		return NULL;
-
-	error = clGetDeviceInfo(dev, CL_DEVICE_ADDRESS_BITS, sizeof(cl_uint),
-				&bits, NULL);
-	if(error) {
-		printf("KMA: could not discover device address space\n");
-		return NULL;
+	// Create and compile the program object
+	program = clLoadProgram(context, device, PROGRAM_FILENAME);
+	if (program == NULL)
+	{
+		perror("Error, can't load or build program\n");
+		exit(1);
 	}
-
-	if(bits == 32) {
-		q = _kma_create_32(ctx, cq, sblocks);
-	} else {
-		q = _kma_create_64(ctx, cq, sblocks);
+	// Create kernel objects from program
+	err = clCreateKernels(program, &kernels);
+	if (err)
+	{
+		return 1;
 	}
+	
+	// Allocate clheap space 
+	void *heap;
+	{
+		heap = clSVMAlloc(context, CL_MEM_READ_WRITE | 
+			CL_MEM_SVM_FINE_GRAIN_BUFFER | CL_MEM_SVM_ATOMICS, size, 0);
+		assert(heap != NULL);
 
-	if(!q) {
-		printf("KMA: No heap!\n");
-		return NULL;
+		err = clSetKernelArgSVMPointer(kernels[0], 0, heap);
+		assert(err == CL_SUCCESS);
+		err = clSetKernelArg(kernels[0], 1, sizeof(uint64_t), (void *)&size);
+		assert(err == CL_SUCCESS);
+
+		err = clEnqueueNDRangeKernel(queue, kernels[0], 1, NULL, global_work_size, 
+			local_work_size, 0, NULL, NULL);
+		assert(err == CL_SUCCESS);
+		clFinish(queue);
 	}
+	*clheap = heap;
 
-	/* Initialise kernel */
-	kernel = clCreateKernel(prg, "clheap_init", &error);
-	if(error != CL_SUCCESS) {
-		printf("KMA: Could not create heap init kernel: %i\n", error);
-		return NULL;
-	}
-	clSetKernelArg(kernel, 0, sizeof(cl_mem), &q);
+	// Release cl objects
+	clReleaseKernels(kernels);
+	clReleaseProgram(program);
 
-	error = clEnqueueNDRangeKernel(cq, kernel, 1, NULL, &threads, NULL, 0, NULL, NULL);
-	error |= clFinish(cq);
-	if(error != CL_SUCCESS) {
-		printf("KMA: Could not execute heap init kernel: %i\n", error);
-		return NULL;
-	}
-	clReleaseKernel(kernel);
-
-	return q;
+	return 0;
 }
 
-//<ADDED>
-int
-_kma_create_64_svm(cl_context ctx, cl_command_queue cq, unsigned int sblocks, void **host_ptr) {
-	struct kma_heap_64 localHeap;
+cl_program clLoadProgram(cl_context context, cl_device_id device, const char* filename)
+{
+	FILE *fp;
+	size_t length;
+	char *data;
+	const char* source;
+	size_t ret;
 
-	localHeap.bytes = (sblocks * KMA_SB_SIZE) + (sizeof(struct kma_heap_64));
-	*host_ptr = clSVMAlloc(ctx, 
-		CL_MEM_READ_WRITE | CL_MEM_SVM_FINE_GRAIN_BUFFER | CL_MEM_SVM_ATOMICS, 
-		localHeap.bytes, 0);
-	if(*host_ptr == NULL) {
-		printf("KMA: Could not allocate heap on-device\n");
-		return 1;
+	// Open file
+	fp = fopen(filename, "rb");
+	if (fp == NULL)
+		fprintf(stderr, "Error opening file\n");
+
+	// Get length of file
+	fseek(fp, 0, SEEK_END);
+	length = ftell(fp);
+	fseek(fp, 0, SEEK_SET);
+
+	// Read program source
+	data = (char*)malloc((length+1) * sizeof(char));
+	ret = fread(data, sizeof(char), length, fp);
+	if (ret != length)
+		fprintf(stderr, "Error reading file\n");
+	data[length] = 0;
+
+	// Create and build program object
+	source = &data[0];
+	cl_program program = clCreateProgramWithSource(context, 1, &source, NULL, NULL);
+	if (program == NULL) {
+		fprintf(stderr, "Error creating program\n");
+		return NULL;
 	}
 
-	//clEnqueueSVMMap(cq, CL_TRUE, CL_MAP_WRITE, *host_ptr, localHeap.bytes, 0, NULL, NULL);
-	memcpy(*host_ptr, &localHeap, sizeof(struct kma_heap_64));
-	//clEnqueueSVMUnmap(cq, *host_ptr, 0, NULL, NULL);
-	if(*host_ptr == NULL) {
-		printf("KMA: Could not setup heap on device\n");
-		return 1;
+	// Compile program
+	if (clBuildProgram(program, 0, NULL, "-I . -cl-std=CL2.0", NULL, NULL) != CL_SUCCESS)
+	{
+		cl_int err;
+		size_t len;
+		char *buffer;
+
+		clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, 0, NULL, &len);
+		buffer = calloc(sizeof(char), len);
+		clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, len, buffer, NULL);
+		fprintf(stderr, "Error building program %d: %s\n", err, buffer);
+		return NULL;
 	}
 
-	clFinish(cq);
+	free(data);
+	fclose(fp);
+
+	return program;
+}
+
+int clCreateKernels(cl_program program, cl_kernel **kernels_ptr)
+{
+	cl_int err;
+	cl_kernel *kernels = (cl_kernel *)malloc(NUM_KERNELS * sizeof(cl_kernel));
+
+	for(int i = 0; i < NUM_KERNELS; i++)
+	{
+		kernels[i] = clCreateKernel(program, kernels_name[i], &err);
+		if (err != CL_SUCCESS)
+		{
+			fprintf(stderr, "Error creating kernels\n");
+			return err;
+		}
+	}
+
+	*kernels_ptr = kernels;
 
 	return CL_SUCCESS;
 }
 
-int
-_kma_create_32_svm(cl_context ctx, cl_command_queue cq, unsigned int sblocks, void **host_ptr) {
-	struct kma_heap_32 localHeap;
-
-	localHeap.bytes = (sblocks * KMA_SB_SIZE) + (sizeof(struct kma_heap_32));
-
-	*host_ptr = clSVMAlloc(ctx, 
-		CL_MEM_READ_WRITE | CL_MEM_SVM_FINE_GRAIN_BUFFER | CL_MEM_SVM_ATOMICS,
-		localHeap.bytes, 0);
-	if(*host_ptr == NULL) {
-		printf("KMA: Could not allocate heap on-device\n");
-		return 1;
-	}
-
-	memcpy(*host_ptr, &localHeap, sizeof(struct kma_heap_64));
-	if(*host_ptr == NULL) {
-		printf("KMA: Could not setup heap on device\n");
-		return 1;
-	}
-
-	clFinish(cq);
-
-	return CL_SUCCESS;
-}
-
-int
-kma_create_svm(cl_device_id dev, cl_context ctx, cl_command_queue cq,
-		cl_program prg, unsigned int sblocks, void **host_ptr)
+int clReleaseKernels(cl_kernel *kernels)
 {
-	cl_int error;
-	cl_uint bits;
-	//cl_mem q;
-	cl_kernel kernel;
-	const size_t threads = 1;
-
-	if(sblocks == 0)
-		return 1;
-
-	error = clGetDeviceInfo(dev, CL_DEVICE_ADDRESS_BITS, sizeof(cl_uint),
-				&bits, NULL);
-	if(error) {
-		printf("KMA: could not discover device address space\n");
-		return 1;
+	for (int i = 0; i < NUM_KERNELS; i++)
+	{
+		clReleaseKernel(kernels[i]);
 	}
-
-	if(bits == 32) {
-		error = _kma_create_32_svm(ctx, cq, sblocks, host_ptr);
-	} else {
-		error = _kma_create_64_svm(ctx, cq, sblocks, host_ptr);
-	}
-
-	if(error) {
-		printf("KMA: No heap!\n");
-		return 1;
-	}
-
-	/* Initialise kernel */
-	kernel = clCreateKernel(prg, "clheap_init", &error);
-	if(error != CL_SUCCESS) {
-		printf("KMA: Could not create heap init kernel: %i\n", error);
-		return 1;
-	}
-	error = clSetKernelArgSVMPointer(kernel, 0, *host_ptr);
-	if(error != CL_SUCCESS) {
-		printf("KMA: Wrong argument: %i\n", error);
-		return 1;
-	}
-
-	error = clEnqueueNDRangeKernel(cq, kernel, 1, NULL, &threads, NULL, 0, NULL, NULL);
-	error |= clFinish(cq);
-	if(error != CL_SUCCESS) {
-		printf("KMA: Could not execute heap init kernel: %i\n", error);
-		return 1;
-	}
-	clReleaseKernel(kernel);
 
 	return CL_SUCCESS;
 }
