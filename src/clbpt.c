@@ -147,6 +147,30 @@ int clbptCreatePlatform(
 	return CLBPT_SUCCESS;
 }
 
+int clbptReleasePlatform(
+	clbpt_platform platform)
+{
+	cl_int err = 0;
+
+	// Release command queues
+	err |= clReleaseCommandQueue(platform->queue);
+	err |= clReleaseCommandQueue(platform->queue_device);
+	assert(err == 0);
+
+	// Release kernels
+	for (int i = 0; i < NUM_KERNELS; i++) {
+		err |= clReleaseKernel(platform->kernels[i]);
+	}
+	free(platform->kernels);
+	assert(err == 0);
+
+	// Release program
+	err |= clReleaseProgram(platform->program);
+	assert(err == 0);
+
+	return CLBPT_SUCCESS;	
+}
+
 int clbptCreateTree(
 	clbpt_tree *dst_tree_ptr,
 	clbpt_platform platform,

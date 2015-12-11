@@ -651,6 +651,11 @@ _clbptWPacketBufferHandler(
 	int num_kernel = 0;
 	clk_event_t level_barrier, next_barrier;
 
+	if (gid == 0) {
+		level_barrier = create_user_event();
+		set_user_event_status(level_barrier, CL_COMPLETE);
+	}
+
 	ins_begin = 0;
 	del_begin = 0;
 	while (ins_begin != num_ins || del_begin != num_del) {
@@ -751,8 +756,8 @@ _clbptWPacketBufferHandler(
 					property, level_proc);
 			 }
 		);
+		release_event(level_barrier);
 	}
-	release_event(level_barrier);
 }
 
 __kernel void

@@ -22,6 +22,13 @@ int clbptDebug(const char* Format, ...);
 int clbptCreatePlatform(clbpt_platform *dst_platform_ptr, cl_context context);
 
 /**
+ * @brief Release a CLBPT platform.
+ * @param platform The platform.
+ * @return Error code.
+ */
+int clbptReleasePlatform(clbpt_platform platform);
+
+/**
  * @brief Create a new CLBPT.
  * @param dst_tree_ptr The address of B+tree.
  * @param platform CLBPT platform.
