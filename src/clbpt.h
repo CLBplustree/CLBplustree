@@ -121,15 +121,6 @@ int clbptEnqueueInsertions(clbpt_tree tree, int num_inserts, CLBPT_KEY_TYPE *key
  */
 int clbptEnqueueDeletions(clbpt_tree tree, int num_deletes, CLBPT_KEY_TYPE *keys);
 
-
-/**
-* @brief Flush the fetching buffer into the executing stage
-*
-* @param The CLBPT.
-* @return Error code.
-*/
-int clbptFlush(clbpt_tree tree);
-
 /**
  * @brief This function will block the process until all enqueued tasks has finished.
  *

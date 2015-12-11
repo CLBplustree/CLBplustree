@@ -57,14 +57,15 @@ void * _clbptHandler(void *tree)
 
 	while (1)
 	{
-		_clbptLockWaitBuffer((clbpt_tree)tree);	/////
-		while(((clbpt_tree)tree)->is_Complete != 0)
-		{
-			if(((clbpt_tree)tree)->close_thread) pthread_exit(0);
-		}
 		if(((clbpt_tree)tree)->close_thread) pthread_exit(0);
+		_clbptLockWaitBuffer((clbpt_tree)tree);
+		if (((clbpt_tree)tree)->is_Complete == 1)
+		{
+			_clbptUnlockWaitBuffer((clbpt_tree)tree);
+			continue;
+		}
+		_clbptUnlockWaitBuffer((clbpt_tree)tree);
 		do {
-			if(((clbpt_tree)tree)->close_thread) pthread_exit(0);
 			_clbptDebug( "select START\n");
 			isEmpty = _clbptSelectFromWaitBuffer((clbpt_tree)tree);
 			if (isEmpty)
@@ -75,7 +76,9 @@ void * _clbptHandler(void *tree)
 			_clbptHandleExecuteBuffer((clbpt_tree)tree);
 			_clbptDebug( "handle COMPLETE\n");
 		} while (isEmpty != 1);
+		_clbptLockWaitBuffer((clbpt_tree)tree);
 		((clbpt_tree)tree)->is_Complete = 1;
+		_clbptUnlockWaitBuffer((clbpt_tree)tree);
 		_clbptDebug( "==========================================\n");
 	}
 }
@@ -106,9 +109,6 @@ int _clbptBufferExchange(clbpt_tree tree)
 	tree->wait_result_buf = result_buf_temp;
 	_clbptDebug( "buffer exchange COMPLETE\n");
 	//while (pthread_mutex_trylock(&tree->buffer_mutex) == 0)_clbptUnlockWaitBuffer(tree);
-	int err = _clbptUnlockWaitBuffer(tree);
-	tree->is_Complete = 0;
-	assert(err == CLBPT_SUCCESS);
 	return CLBPT_SUCCESS;
 }
 
@@ -366,19 +366,26 @@ int clbptEnqueueDeletions(
 	return CLBPT_SUCCESS;
 }
 
-int clbptFlush(clbpt_tree tree)
-{
-	int err = _clbptBufferExchange(tree);
-	if (err != CLBPT_SUCCESS) return err;
-	return CLBPT_SUCCESS;
-}
-
 int clbptFinish(clbpt_tree tree)
 {
 	_clbptDebug("Enter finish\n");
-	while (!tree->is_Complete);
-	int err = clbptFlush(tree);
-	if (err != CLBPT_SUCCESS) return err;
-	while(!tree->is_Complete);
+	for (;;) {
+		_clbptLockWaitBuffer((clbpt_tree)tree);
+		if (tree->is_Complete) {
+			int err = _clbptBufferExchange(tree);
+			if (err != CLBPT_SUCCESS) return err;
+			tree->is_Complete = 0;
+			break;
+		}
+		_clbptUnlockWaitBuffer((clbpt_tree)tree);
+	}
+	_clbptUnlockWaitBuffer((clbpt_tree)tree);
+	for (;;) {
+		_clbptLockWaitBuffer((clbpt_tree)tree);
+		if (tree->is_Complete)
+			break;
+		_clbptUnlockWaitBuffer((clbpt_tree)tree);
+	}
+	_clbptUnlockWaitBuffer((clbpt_tree)tree);
 	return CLBPT_SUCCESS;
 }
