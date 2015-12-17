@@ -8,7 +8,7 @@ CPS=bin/clbpt.cl bin/kma.cl bin/kma.h #bin/clIndexedQueue.h bin/clheap.h bin/clI
 all: bin
 
 obj/kma.o: src/KMA/kma.c ${DEPS} 
-	${CC} ${CFLAGS} -c -o $@ $< 
+	${CC} ${CFLAGS} -c -o $@ $<
 
 obj/%.o: src/%.c ${DEPS} 
 	${CC} ${CFLAGS} -c -o $@ $<
