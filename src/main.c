@@ -74,7 +74,7 @@ int main()
 	p = malloc(sizeof(struct _clbpt_platform));
 	clbptCreatePlatform(&p, context);
 	fprintf(stderr, "CreatePlatform SUCCESS\n");
-	clbptCreateTree(&t, p, 4, sizeof(int));
+	clbptCreateTree(&t, p, 32, sizeof(int));
 	fprintf(stderr, "CreateTree SUCCESS\n");
 
 	// read test data
@@ -100,7 +100,6 @@ int main()
 		//fread(data_info, 2, sizeof(int), input_data);
 		printf("Info %d %d\n",data_info[0],data_info[1]);
 		getchar();
-		time(&start_time);
 		if(!data_info[0] ) break;
 		if (data_info[1] > bfsize){
 			bfsize = data_info[1];
@@ -112,8 +111,9 @@ int main()
 			//fread(data_buffer, data_info[1], sizeof(int), input_data);
 			for (i = 0; i < data_info[1]; i++){
 				fscanf(input_data, "%d", &data_buffer[i]);
-				printf("%d key : %d.\n", i, data_buffer[i]);
+				//printf("%d key : %d.\n", i, data_buffer[i]);
 			}
+			time(&start_time);
 			clbptEnqueueSearches(t, data_info[1], data_buffer, (void **)rec_buffer);
 			break;
 		case  CLBPT_INSERT_TYPE:
@@ -122,16 +122,18 @@ int main()
 			for (i = 0; i < data_info[1]; i++){
 				fscanf(input_data, "%d", &data_buffer[i]);
 				fscanf(input_data, "%d", &rec_buffer[i]);
-				printf("%d key : %d.\n", i, data_buffer[i]);
+				//printf("%d key : %d.\n", i, data_buffer[i]);
 			}
+			time(&start_time);
 			clbptEnqueueInsertions(t, data_info[1], data_buffer, (void **)rec_buffer);
 			break;
 		case  CLBPT_DELETE_TYPE:
 			//fread(data_buffer, data_info[1], sizeof(int), input_data);
 			for (i = 0; i < data_info[1]; i++){
 				fscanf(input_data, "%d", &data_buffer[i]);
-				printf("%d key : %d.\n", i, data_buffer[i]);
+				//printf("%d key : %d.\n", i, data_buffer[i]);
 			}
+			time(&start_time);
 			clbptEnqueueDeletions(t, data_info[1], data_buffer);
 			break;
 		case  CLBPT_RANGE_TYPE:
@@ -153,8 +155,8 @@ int main()
 				printf("key(%d) : %d\n", i, rec_buffer[i]);
 		time(&end_time);
 		int delay = difftime(end_time, start_time);
-		_clbptPrintTree(t->property, t->record_size);
-		printf("Cost time : %d seconds\n",delay);
+		//_clbptPrintTree(t->property, t->record_size);
+		printf("CLBPT Cost time : %d seconds\n",delay);
 	}
 
 	clbptReleaseTree(t);

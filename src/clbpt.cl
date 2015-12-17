@@ -577,6 +577,7 @@ _clbptWPacketInit(
 	)
 {
 	uint gid = get_global_id(0);
+	clk_event_t event;
 
 	//if (gid == 0) printf("Init\n");
 	// Initialize Insert Packet
@@ -607,11 +608,15 @@ _clbptWPacketInit(
 				get_default_queue(),
 				CLK_ENQUEUE_FLAGS_NO_WAIT,
 				ndrange_1D(2 * CLBPT_ORDER, 2 * CLBPT_ORDER),
+				0, 
+				NULL,
+				&event,
 				^{
 					 _clbptWPacketBufferHandler(ins, num_ins, del, num_del,
 						heap, property, level_proc);
 				 }
 			);
+			release_event(event);
 		}
 		else if (level_proc == 0) {
 			// Handle root node layer
@@ -619,12 +624,16 @@ _clbptWPacketInit(
 				get_default_queue(),
 				CLK_ENQUEUE_FLAGS_NO_WAIT,
 				ndrange_1D(2 * CLBPT_ORDER, 2 * CLBPT_ORDER),
+				0, 
+				NULL,
+				&event,
 				^(__local void *proc_list){
 					_clbptWPacketBufferRootHandler(proc_list, ins, num_ins, del,
 						num_del, heap, property);
 				},
 				2 * CLBPT_ORDER * sizeof(clbpt_entry)
 			);
+			release_event(event);
 		}
 		else {
 			_clbptWPacketBufferPreRootHandler(ins, heap, property);
@@ -649,12 +658,7 @@ _clbptWPacketBufferHandler(
 	uint is_in_sgroup;
 	uintptr_t cur_parent;
 	int num_kernel = 0;
-	clk_event_t level_barrier, next_barrier;
-
-	if (gid == 0) {
-		level_barrier = create_user_event();
-		set_user_event_status(level_barrier, CL_COMPLETE);
-	}
+	clk_event_t level_barrier[512];
 
 	ins_begin = 0;
 	del_begin = 0;
@@ -711,9 +715,9 @@ _clbptWPacketBufferHandler(
 				get_default_queue(),
 				CLK_ENQUEUE_FLAGS_NO_WAIT,
 				ndrange_1D(2 * CLBPT_ORDER, 2 * CLBPT_ORDER),
-				1,
-				&level_barrier,
-				&next_barrier,
+				0,
+				NULL,
+				&level_barrier[num_kernel++],
 				^(__local void *proc_list){
 					_clbptWPacketSuperGroupHandler(
 						proc_list,
@@ -727,8 +731,6 @@ _clbptWPacketBufferHandler(
 				},
 				2 * CLBPT_ORDER * sizeof(clbpt_entry)
 			);
-			release_event(level_barrier);
-			level_barrier = next_barrier;
 			/*
 			if (ins_begin == 0 && del_begin == 0) {
 				enqueue_marker(get_default_queue(), 1, level_barrier, 
@@ -748,15 +750,17 @@ _clbptWPacketBufferHandler(
 			get_default_queue(),
 			CLK_ENQUEUE_FLAGS_NO_WAIT,
 			ndrange_1D(MAX_LOCAL_SIZE, MAX_LOCAL_SIZE),
-			1,
-			&level_barrier,
+			num_kernel,
+			level_barrier,
 			NULL,
 			^{
 				_clbptWPacketCompact(ins, num_ins, del, num_del, heap,
 					property, level_proc);
 			 }
 		);
-		release_event(level_barrier);
+		for (int i = 0; i < num_kernel; i++) {
+			release_event(level_barrier[i]);
+		}
 	}
 }
 
