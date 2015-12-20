@@ -1,6 +1,10 @@
 #include <iostream>
 #include <string>
 #include <map>
+// clbptbench
+#include <cstdio>
+#include <cstdlib>
+#include <time.h>
 
 using namespace std;
 
@@ -15,21 +19,17 @@ int main(int argc, char const *argv[])
 	map<int, record_type>::iterator it, uit;
 
 	// test data from clbptbench
-#include <cstdio>
-#include <cstdlib>
-#include <time.h>
 #define CLBPT_STOP_TYPE 0
 #define CLBPT_INSERT_TYPE 1
 #define CLBPT_SEARCH_TYPE 2
 #define CLBPT_DELETE_TYPE 3
 #define CLBPT_RANGE_TYPE 4
-#define CL_SUCCESS 0
 
 	// read test data
 	FILE *input_data ;
 	input_data = fopen("input", "r");
 	if (input_data == NULL) {
-		cout << "Can't open file input" << endl;
+		printf("Can't open file input\n");
 		return 0;
 	}
 
@@ -42,7 +42,6 @@ int main(int argc, char const *argv[])
 
 	while(1) {
 		int i;
-		int err = CL_SUCCESS;
 		int data_info[2] = {0,0};
 		fscanf(input_data, "%d %d", &data_info[0], &data_info[1]);
 		//fread(data_info, 2, sizeof(int), input_data);
@@ -68,11 +67,11 @@ int main(int argc, char const *argv[])
 				int rec = 0;
 				it = Map.find(key);
 				if (it != Map.end()) {
-					cout << "FOUND: key " << key << endl;
+					//cout << "FOUND: key " << key << endl;
 					rec_buffer[i] = it->second;
 				}
 				else {
-					cout << "NOT FOUND: key " << key << endl;
+					//cout << "NOT FOUND: key " << key << endl;
 				}
 			}
 			break;
@@ -88,7 +87,7 @@ int main(int argc, char const *argv[])
 			for(i = 0; i < data_info[1]; i++) {
 				int key = data_buffer[i];
 				int rec = rec_buffer[i];
-				cout << "Insert <key,value>: " << "<" << key << "," << rec << ">" << endl;
+				//cout << "Insert <key,value>: " << "<" << key << "," << rec << ">" << endl;
 				//Map[key] = rec;
 				Map.insert(map<int, record_type>::value_type(key, rec));
 			}
@@ -104,11 +103,11 @@ int main(int argc, char const *argv[])
 				int key = data_buffer[i];
 				it = Map.find(key);
 				if (it != Map.end()) {
-					cout << "Delete key: " << key << endl;
+					//cout << "Delete key: " << key << endl;
 					Map.erase(it);
 				}
 				else {
-					cout << "NOT EXISTED: key " << key << endl;
+					//cout << "NOT EXISTED: key " << key << endl;
 				}
 			}
 			break;
@@ -117,18 +116,14 @@ int main(int argc, char const *argv[])
 			//while((it = Map.find(key)) == Map.end() && key <= ukey) key++;
 			//uit = Map.find(ukey);
 			//for(; it->first <= ukey && it != Map.end(); it++) {
-			//	cout << "key " << it->first << " => value " << it->second << endl;
+			//	//cout << "key " << it->first << " => value " << it->second << endl;
 			//}
 			break;
 		default: exit(-1);
 		}
-		if (err != CL_SUCCESS)
-		{
-			fprintf(stderr, "EnqueInsertions ERROR\n");
-			exit(err);
-		}
+
 		if (data_info[0] == CLBPT_SEARCH_TYPE)
-			for (i = 0; i < data_info[1]; i++)
+			for(i = 0; i < data_info[1]; i++)
 				printf("key(%d) : %d\n", data_buffer[i], rec_buffer[i]);
 		time(&end_time);
 		int delay = difftime(end_time, start_time);
