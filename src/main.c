@@ -152,7 +152,7 @@ int main()
 		fflush(0);
 		if (data_info[0] == CLBPT_SEARCH_TYPE)
 			for (i = 0; i < data_info[1]; i++)
-				printf("key(%d) : %d\n", i, rec_buffer[i]);
+				printf("key(%d) : %d\n", data_buffer[i], rec_buffer[i]);
 		time(&end_time);
 		int delay = difftime(end_time, start_time);
 		//_clbptPrintTree(t->property, t->record_size);
