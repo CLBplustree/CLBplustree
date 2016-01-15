@@ -9,11 +9,49 @@
 #include <string.h>
 #include <assert.h>
 
-
 // Size and Order
 static size_t max_local_work_size;		// get this value in _clbptInitialize
-//static uint32_t order = CLBPT_ORDER;	// get this value in _clbptInitialize
+static uint32_t order = 4;	// get this value in _clbptInitialize
 
+
+int partition(clbpt_packet *execute_buf, void **result_buf, int l, int h)
+{
+	clbpt_packet pivot_pkt = execute_buf[h];
+	void *pivot_res = result_buf[h];
+	int i = l-1;
+
+	for(int j = l; j < h; j++) {
+		if (getKeyFromPacket(execute_buf[j]) < getKeyFromPacket(pivot_pkt)) {
+			clbpt_packet tmp_pkt = execute_buf[j];
+			void *tmp_res = result_buf[j];
+
+			execute_buf[j] = execute_buf[++i];
+			result_buf[j] = result_buf[i];
+
+			execute_buf[i] = tmp_pkt;
+			result_buf[i] = tmp_res;
+		}
+	}
+	execute_buf[h] = execute_buf[i+1];
+	result_buf[h] = result_buf[i+1];
+	execute_buf[i+1] = pivot_pkt;
+	result_buf[i+1] = pivot_res;
+
+	return i+1;
+}
+
+void quick_sort(clbpt_packet *execute_buf, void **result_buf, int l, int h)
+{
+	if (l >= h) return;
+	int m = partition(execute_buf, result_buf, l, h);
+	quick_sort(execute_buf, result_buf, l, m-1);
+	quick_sort(execute_buf, result_buf, m+1, h);
+}
+
+void _clbptPacketSort(clbpt_packet *execute_buf, void **execute_result_buf, uint32_t buf_size)
+{
+	quick_sort(execute_buf, execute_result_buf, 0, buf_size-1);
+}
 
 int handle_node(clbpt_tree tree, void *node_addr, void *leftmost_node_addr);
 int handle_leftmost_node(clbpt_tree tree, clbpt_leaf_node *node);
@@ -211,7 +249,8 @@ int _clbptInitialize(clbpt_tree tree)
 	//_clbptDebug( "Device Maximum Work Item Sizes = %zu x %zu x %zu\n", max_work_item_sizes[0], max_work_item_sizes[1], max_work_item_sizes[2]);
 	max_local_work_size = max_work_item_sizes[0];	// one dimension
 	if (tree->order <= 0)
-		tree->order = max_local_work_size/2;
+		tree->order = order;
+		//tree->order = max_local_work_size/2;
 	_clbptDebug( "Tree Order = %d\n", tree->order);
 
 	// clmem allocation
@@ -295,6 +334,7 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 	assert(err == CL_SUCCESS);
 
 	// kernel _clbptPacketSort
+	/*
 	kernel = kernels[CLBPT_PACKET_SORT];
 	err = clSetKernelArg(kernel, 0, sizeof(tree->execute_buf_d), (void *)&tree->execute_buf_d);
 	assert(err == CL_SUCCESS);
@@ -306,6 +346,7 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 	assert(err == CL_SUCCESS);
 	err = clSetKernelArg(kernel, 4, sizeof(tree->buf_size), (void *)&tree->buf_size);
 	assert(err == CL_SUCCESS);
+	*/
 
 	// PacketSelect
 	kernel = kernels[CLBPT_PACKET_SELECT];
@@ -326,6 +367,7 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 		return isEmpty;
 
 	// PacketSort
+	/*
 	kernel = kernels[CLBPT_PACKET_SORT];
 	global_work_size = local_work_size = max_local_work_size;
 	err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
@@ -334,6 +376,18 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 	err = clEnqueueReadBuffer(queue, tree->execute_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(clbpt_packet), tree->execute_buf, 0, NULL, NULL);
 	assert(err == CL_SUCCESS);
 	err = clEnqueueReadBuffer(queue, tree->result_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(void *), tree->execute_result_buf, 0, NULL, NULL);
+	assert(err == CL_SUCCESS);
+	*/
+	err = clEnqueueReadBuffer(queue, tree->execute_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(clbpt_packet), tree->execute_buf, 0, NULL, NULL);
+	assert(err == CL_SUCCESS);
+	err = clEnqueueReadBuffer(queue, tree->result_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(void *), tree->execute_result_buf, 0, NULL, NULL);
+	assert(err == CL_SUCCESS);
+
+	_clbptPacketSort(tree->execute_buf, tree->execute_result_buf, tree->buf_size);
+
+	err = clEnqueueWriteBuffer(queue, tree->execute_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(clbpt_packet), tree->execute_buf, 0, NULL, NULL);
+	assert(err == CL_SUCCESS);
+	err = clEnqueueWriteBuffer(queue, tree->result_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(void *), tree->execute_result_buf, 0, NULL, NULL);
 	assert(err == CL_SUCCESS);
 
 	return isEmpty;
