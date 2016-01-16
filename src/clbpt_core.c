@@ -13,6 +13,7 @@
 static size_t max_local_work_size;		// get this value in _clbptInitialize
 static uint32_t order = 4;	// get this value in _clbptInitialize
 
+/*
 void insertionSort(clbpt_packet *execute_buf, void **result_buf, int l, int h)
 {
 	for (int m = l + 1; m <= h; m++) {
@@ -78,11 +79,13 @@ void quick_sort(clbpt_packet *execute_buf, void **result_buf, int l, int h)
 	else
 		insertionSort(execute_buf, result_buf, l, h);
 }
+*/
 
-int less(const void *a, const void *b)
+const clbpt_packet *execute_buf_hook;
+int permListComp(const void *a, const void *b)
 {
-	int aKey = getKeyFromPacket(*(const clbpt_packet *)a);
-	int bKey = getKeyFromPacket(*(const clbpt_packet *)b);
+	int aKey = getKeyFromPacket(execute_buf_hook[*(const int *)a]);
+	int bKey = getKeyFromPacket(execute_buf_hook[*(const int *)b]);
 	if (aKey < bKey)
 		return -1;
 	else if (aKey == bKey)
@@ -93,13 +96,31 @@ int less(const void *a, const void *b)
 
 void _clbptPacketSort(clbpt_packet *execute_buf, void **execute_result_buf, uint32_t buf_size)
 {
-	quick_sort(execute_buf, execute_result_buf, 0, buf_size-1);
-	//qsort(execute_buf, buf_size, sizeof(clbpt_packet), less);
-	/*	
+	// Initialize permutation list
+	int *perm = (int *)malloc(buf_size * sizeof(int));
 	for (int i = 0; i < buf_size; i++)
-		printf("%d ", getKeyFromPacket(execute_buf[i]));
-	getchar();
-	*/
+		perm[i] = i;
+	
+	// Sort it
+	execute_buf_hook = execute_buf;
+	qsort(perm, buf_size, sizeof(int), permListComp);
+
+	// Sort execute_buf and result_buf by the permutation list
+	clbpt_packet *execute_buf_temp = (clbpt_packet *)
+		malloc(buf_size * sizeof(clbpt_packet));
+	void **result_buf_temp = (void **)malloc(buf_size * sizeof(void *));
+	memcpy(execute_buf_temp, execute_buf, buf_size * sizeof(clbpt_packet));
+	memcpy(result_buf_temp, execute_result_buf, buf_size * sizeof(void *));
+	for (int i = 0; i < buf_size; i++) {
+		int index = perm[i];
+		execute_buf[i] = execute_buf_temp[index];
+		execute_result_buf[i] = result_buf_temp[index];
+	}
+
+	// Free allocations
+	free(perm);
+	free(execute_buf_temp);
+	free(result_buf_temp);
 }
 
 int handle_node(clbpt_tree tree, void *node_addr, void *leftmost_node_addr);
