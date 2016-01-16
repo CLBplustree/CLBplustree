@@ -13,44 +13,93 @@
 static size_t max_local_work_size;		// get this value in _clbptInitialize
 static uint32_t order = 4;	// get this value in _clbptInitialize
 
+void insertionSort(clbpt_packet *execute_buf, void **result_buf, int l, int h)
+{
+	for (int m = l + 1; m <= h; m++) {
+		clbpt_packet m_pkt = execute_buf[m];
+		void *m_res = result_buf[m];	
+		int mKey = getKeyFromPacket(m_pkt);
+
+		int n;
+		for (n = m - 1; n >= l; n--) {
+			if (getKeyFromPacket(execute_buf[n]) > mKey) {
+				execute_buf[n + 1] = execute_buf[n];
+				result_buf[n + 1] = result_buf[n];
+			}
+			else
+				break;
+		}
+		execute_buf[n + 1] = m_pkt;
+		result_buf[n + 1] = m_res;
+	}
+}
 
 int partition(clbpt_packet *execute_buf, void **result_buf, int l, int h)
 {
-	clbpt_packet pivot_pkt = execute_buf[h];
-	void *pivot_res = result_buf[h];
-	int i = l-1;
+	int pivot = rand() % (h - l + 1) + l;
+	clbpt_packet pivot_pkt = execute_buf[pivot];
+	void *pivot_res = result_buf[pivot];
+	int pivotKey = getKeyFromPacket(pivot_pkt);
 
-	for(int j = l; j < h; j++) {
-		if (getKeyFromPacket(execute_buf[j]) < getKeyFromPacket(pivot_pkt)) {
-			clbpt_packet tmp_pkt = execute_buf[j];
-			void *tmp_res = result_buf[j];
+	execute_buf[pivot] = execute_buf[l];
+	result_buf[pivot] = result_buf[l];
+	for (;;) {
+		while (l != h && getKeyFromPacket(execute_buf[h]) >= pivotKey)
+			h--;
+		if (l == h)
+			break;
+		execute_buf[l] = execute_buf[h];
+		result_buf[l] = result_buf[h];
+		l++;
 
-			execute_buf[j] = execute_buf[++i];
-			result_buf[j] = result_buf[i];
+		while (l != h && pivotKey >= getKeyFromPacket(execute_buf[l]))
+			l++;
+		if (l == h)
+			break;
+		execute_buf[h] = execute_buf[l];
+		result_buf[h] = result_buf[l];
+		h--;
+	}	
 
-			execute_buf[i] = tmp_pkt;
-			result_buf[i] = tmp_res;
-		}
-	}
-	execute_buf[h] = execute_buf[i+1];
-	result_buf[h] = result_buf[i+1];
-	execute_buf[i+1] = pivot_pkt;
-	result_buf[i+1] = pivot_res;
+	execute_buf[l] = pivot_pkt;
+	result_buf[l] = pivot_res;
 
-	return i+1;
+	return l;
 }
 
 void quick_sort(clbpt_packet *execute_buf, void **result_buf, int l, int h)
 {
 	if (l >= h) return;
-	int m = partition(execute_buf, result_buf, l, h);
-	quick_sort(execute_buf, result_buf, l, m-1);
-	quick_sort(execute_buf, result_buf, m+1, h);
+	if (h - l > 512) {
+		int m = partition(execute_buf, result_buf, l, h);
+		quick_sort(execute_buf, result_buf, l, m-1);
+		quick_sort(execute_buf, result_buf, m+1, h);
+	}
+	else
+		insertionSort(execute_buf, result_buf, l, h);
+}
+
+int less(const void *a, const void *b)
+{
+	int aKey = getKeyFromPacket(*(const clbpt_packet *)a);
+	int bKey = getKeyFromPacket(*(const clbpt_packet *)b);
+	if (aKey < bKey)
+		return -1;
+	else if (aKey == bKey)
+		return 0;
+	else
+		return 1;
 }
 
 void _clbptPacketSort(clbpt_packet *execute_buf, void **execute_result_buf, uint32_t buf_size)
 {
 	quick_sort(execute_buf, execute_result_buf, 0, buf_size-1);
+	//qsort(execute_buf, buf_size, sizeof(clbpt_packet), less);
+	/*	
+	for (int i = 0; i < buf_size; i++)
+		printf("%d ", getKeyFromPacket(execute_buf[i]));
+	getchar();
+	*/
 }
 
 int handle_node(clbpt_tree tree, void *node_addr, void *leftmost_node_addr);
