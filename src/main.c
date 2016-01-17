@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <sys/time.h>
 #include <CL/cl.h>
 #include <assert.h>
 #include "clbpt.h"
@@ -90,8 +91,9 @@ int main()
 	int *data_buffer = calloc(128, sizeof(int));
 	int *rec_buffer = calloc(128, sizeof(int));
 	clbpt_pair_group_list pg_list;
-	time_t start_time;
-	time_t end_time;
+	struct timeval start_time, end_time;
+	//time_t start_time;
+	//time_t end_time;
 	while(1){
 		int i;
 		int err = CL_SUCCESS;
@@ -113,7 +115,8 @@ int main()
 				fscanf(input_data, "%d", &data_buffer[i]);
 				//printf("%d key : %d.\n", i, data_buffer[i]);
 			}
-			time(&start_time);
+			gettimeofday(&start_time, NULL);
+			//time(&start_time);
 			clbptEnqueueSearches(t, data_info[1], data_buffer, (void **)rec_buffer);
 			break;
 		case  CLBPT_INSERT_TYPE:
@@ -124,7 +127,8 @@ int main()
 				fscanf(input_data, "%d", &rec_buffer[i]);
 				//printf("%d key : %d.\n", i, data_buffer[i]);
 			}
-			time(&start_time);
+			gettimeofday(&start_time, NULL);
+			//time(&start_time);
 			clbptEnqueueInsertions(t, data_info[1], data_buffer, (void **)rec_buffer);
 			break;
 		case  CLBPT_DELETE_TYPE:
@@ -133,7 +137,8 @@ int main()
 				fscanf(input_data, "%d", &data_buffer[i]);
 				//printf("%d key : %d.\n", i, data_buffer[i]);
 			}
-			time(&start_time);
+			gettimeofday(&start_time, NULL);
+			//time(&start_time);
 			clbptEnqueueDeletions(t, data_info[1], data_buffer);
 			break;
 		case  CLBPT_RANGE_TYPE:
@@ -150,13 +155,17 @@ int main()
 		}
 		clbptFinish(t);
 		fflush(0);
-		if (data_info[0] == CLBPT_SEARCH_TYPE)
-			for (i = 0; i < data_info[1]; i++)
-				printf("key(%d) : %d\n", data_buffer[i], rec_buffer[i]);
-		time(&end_time);
-		int delay = difftime(end_time, start_time);
+		//if (data_info[0] == CLBPT_SEARCH_TYPE)
+		//	for (i = 0; i < data_info[1]; i++)
+		//		printf("key(%d) : %d\n", data_buffer[i], rec_buffer[i]);
+		gettimeofday(&end_time, NULL);
+		int msec = (end_time.tv_sec-start_time.tv_sec)*1000;
+		msec += (end_time.tv_usec-start_time.tv_usec)/1000;
+		int delay = msec;
+		//time(&end_time);
+		//int delay = difftime(end_time, start_time);
 		//_clbptPrintTree(t->property, t->record_size);
-		printf("CLBPT Cost time : %d seconds\n",delay);
+		printf("CLBPT Cost time : %d ms\n", delay);
 	}
 
 	clbptReleaseTree(t);
