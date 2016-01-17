@@ -112,7 +112,7 @@ int _clbptBufferExchange(clbpt_tree tree)
 	return CLBPT_SUCCESS;
 }
 
-int clbptEnqueueFecthBuffer(
+int clbptEnqueueFetchBuffer(
 	clbpt_tree tree,
 	clbpt_packet packet,
 	void *record_addr)
@@ -193,6 +193,7 @@ int clbptCreateTree(
 	dst_tree->fetch_buf_index = 0;
 	dst_tree->close_thread = 0;
 	dst_tree->is_Complete = 1;
+	dst_tree->readOnlyMode = 1;
 	if ((err = pthread_mutex_init(&(dst_tree->buffer_mutex), NULL)) != 0)
 		return err;
 	if ((err = pthread_mutex_init(&(dst_tree->loop_mutex), NULL)) != 0)
@@ -267,26 +268,27 @@ int clbptEnqueueSearches(
 	void **record_list)
 {
 	int i, err;
+	tree->readOnlyMode = 1;
 	for (i = 0; i < num_keys; i++)
 	{
 		/*
-		err = clbptEnqueueFecthBuffer(
+		err = clbptEnqueueFetchBuffer(
 			tree,
 			CLBPT_PACKET_SEARCH(keys[i]),
 			record_list[i]);
 		*/
 		if (tree->record_size == sizeof(char))
-			err = clbptEnqueueFecthBuffer(
+			err = clbptEnqueueFetchBuffer(
 				tree,
 				CLBPT_PACKET_SEARCH(keys[i]),
 				(void *)((char *)record_list + i));
 		else if (tree->record_size == sizeof(int))
-			err = clbptEnqueueFecthBuffer(
+			err = clbptEnqueueFetchBuffer(
 				tree,
 				CLBPT_PACKET_SEARCH(keys[i]),
 				(void *)((int *)record_list + i));
 		else if (tree->record_size == sizeof(double))
-			err = clbptEnqueueFecthBuffer(
+			err = clbptEnqueueFetchBuffer(
 				tree,
 				CLBPT_PACKET_SEARCH(keys[i]),
 				(void *)((double *)record_list + i));
@@ -303,9 +305,10 @@ int clbptEnqueueRangeSearches(
 	clbpt_pair_group_list pair_group_list) 
 {
 	int i, err;
+	tree->readOnlyMode = 1;
 	for (i = 0; i < num_keys; i++)
 	{
-		err = clbptEnqueueFecthBuffer(
+		err = clbptEnqueueFetchBuffer(
 			tree,
 			CLBPT_PACKET_RANGE(l_keys[i], u_keys[i]),
 			(void *)(pair_group_list+i));
@@ -321,26 +324,27 @@ int clbptEnqueueInsertions(
 	void **records)
 {
 	int i, err;
+	tree->readOnlyMode = 0;
 	for (i = 0; i < num_inserts; i++)
 	{
 		/*
-		err = clbptEnqueueFecthBuffer(
+		err = clbptEnqueueFetchBuffer(
 			tree,
 			CLBPT_PACKET_INSERT(keys[i], 1),
 			records[i]);
 		*/
 		if (tree->record_size == sizeof(char))
-			err = clbptEnqueueFecthBuffer(
+			err = clbptEnqueueFetchBuffer(
 				tree,
 				CLBPT_PACKET_INSERT(keys[i], 1),
 				(void *)((char *)records+ i));
 		else if (tree->record_size == sizeof(int))
-			err = clbptEnqueueFecthBuffer(
+			err = clbptEnqueueFetchBuffer(
 				tree,
 				CLBPT_PACKET_INSERT(keys[i], 1),
 				(void *)((int *)records+ i));
 		else if (tree->record_size == sizeof(double))
-			err = clbptEnqueueFecthBuffer(
+			err = clbptEnqueueFetchBuffer(
 				tree,
 				CLBPT_PACKET_INSERT(keys[i], 1),
 				(void *)((double *)records+ i));
@@ -355,9 +359,10 @@ int clbptEnqueueDeletions(
 	CLBPT_KEY_TYPE *keys) 
 {
 	int i, err;
+	tree->readOnlyMode = 0;
 	for (i = 0; i < num_deletes; i++)
 	{
-		err = clbptEnqueueFecthBuffer(
+		err = clbptEnqueueFetchBuffer(
 			tree,
 			CLBPT_PACKET_DELETE(keys[i]),
 			NULL);

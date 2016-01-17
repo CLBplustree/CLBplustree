@@ -139,6 +139,7 @@ struct _clbpt_tree {
 	void **node_addr_buf;
 	int *instr_result_buf;
 	uint32_t buf_size;
+	int readOnlyMode;
 
 	// Threads
 	pthread_t handler;

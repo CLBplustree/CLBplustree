@@ -419,22 +419,24 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 	*/
 
 	// PacketSelect
-	kernel = kernels[CLBPT_PACKET_SELECT];
-	isEmpty = 1;
-	global_work_size = tree->buf_size;
-	local_work_size = max_local_work_size;
-	err = clEnqueueWriteBuffer(queue, tree->isEmpty_d, CL_TRUE, 0, sizeof(uint8_t), &isEmpty, 0, NULL, NULL);
-	assert(err == CL_SUCCESS);
-	err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
-	assert(err == CL_SUCCESS);
+	if (tree->readOnlyMode == 0) {
+		kernel = kernels[CLBPT_PACKET_SELECT];
+		isEmpty = 1;
+		global_work_size = tree->buf_size;
+		local_work_size = max_local_work_size;
+		err = clEnqueueWriteBuffer(queue, tree->isEmpty_d, CL_TRUE, 0, sizeof(uint8_t), &isEmpty, 0, NULL, NULL);
+		assert(err == CL_SUCCESS);
+		err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, &local_work_size, 0, NULL, NULL);
+		assert(err == CL_SUCCESS);
 
-	err = clEnqueueReadBuffer(queue, tree->isEmpty_d, CL_TRUE, 0, sizeof(uint8_t), &isEmpty, 0, NULL, NULL);
-	assert(err == CL_SUCCESS);
-	err = clEnqueueReadBuffer(queue, tree->wait_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(clbpt_packet), tree->wait_buf, 0, NULL, NULL);
-	assert(err == CL_SUCCESS);
+		err = clEnqueueReadBuffer(queue, tree->isEmpty_d, CL_TRUE, 0, sizeof(uint8_t), &isEmpty, 0, NULL, NULL);
+		assert(err == CL_SUCCESS);
+		err = clEnqueueReadBuffer(queue, tree->wait_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(clbpt_packet), tree->wait_buf, 0, NULL, NULL);
+		assert(err == CL_SUCCESS);
 
-	if (isEmpty)	// Return if the wait_buf is empty
-		return isEmpty;
+		if (isEmpty)	// Return if the wait_buf is empty
+			return isEmpty;
+	}
 
 	// PacketSort
 	/*
