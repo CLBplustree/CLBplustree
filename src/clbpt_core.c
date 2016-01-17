@@ -431,11 +431,13 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 		{
 			tree->wait_buf[i] = PACKET_NOP;
 		}
+
 		_clbptPacketSort(tree->execute_buf, tree->execute_result_buf, tree->buf_size);
 		err = clEnqueueWriteBuffer(queue, tree->execute_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(clbpt_packet), tree->execute_buf, 0, NULL, NULL);
 		assert(err == CL_SUCCESS);
 		err = clEnqueueWriteBuffer(queue, tree->result_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(void *), tree->execute_result_buf, 0, NULL, NULL);
 		assert(err == CL_SUCCESS);
+
 	}
 	else {
 		// PacketSelect
