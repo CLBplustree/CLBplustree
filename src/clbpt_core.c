@@ -418,8 +418,18 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 	assert(err == CL_SUCCESS);
 	*/
 
-	// PacketSelect
-	if (tree->readOnlyMode == 0) {
+	if (tree->readOnlyMode == 1) {
+		isEmpty = 1;
+		memcpy(tree->execute_buf, tree->wait_buf, 
+			tree->buf_size * sizeof(clbpt_packet));
+		_clbptPacketSort(tree->execute_buf, tree->execute_result_buf, tree->buf_size);
+		err = clEnqueueWriteBuffer(queue, tree->execute_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(clbpt_packet), tree->execute_buf, 0, NULL, NULL);
+		assert(err == CL_SUCCESS);
+		err = clEnqueueWriteBuffer(queue, tree->result_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(void *), tree->execute_result_buf, 0, NULL, NULL);
+		assert(err == CL_SUCCESS);
+	}
+	else {
+		// PacketSelect
 		kernel = kernels[CLBPT_PACKET_SELECT];
 		isEmpty = 1;
 		global_work_size = tree->buf_size;
@@ -436,8 +446,23 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 
 		if (isEmpty)	// Return if the wait_buf is empty
 			return isEmpty;
+
+		// PacketSort
+		err = clEnqueueReadBuffer(queue, tree->execute_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(clbpt_packet), tree->execute_buf, 0, NULL, NULL);
+		assert(err == CL_SUCCESS);
+		err = clEnqueueReadBuffer(queue, tree->result_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(void *), tree->execute_result_buf, 0, NULL, NULL);
+		assert(err == CL_SUCCESS);
+
+		_clbptPacketSort(tree->execute_buf, tree->execute_result_buf, tree->buf_size);
+
+		err = clEnqueueWriteBuffer(queue, tree->execute_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(clbpt_packet), tree->execute_buf, 0, NULL, NULL);
+		assert(err == CL_SUCCESS);
+		err = clEnqueueWriteBuffer(queue, tree->result_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(void *), tree->execute_result_buf, 0, NULL, NULL);
+		assert(err == CL_SUCCESS);
+
 	}
 
+	return isEmpty;
 	// PacketSort
 	/*
 	kernel = kernels[CLBPT_PACKET_SORT];
@@ -450,19 +475,6 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 	err = clEnqueueReadBuffer(queue, tree->result_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(void *), tree->execute_result_buf, 0, NULL, NULL);
 	assert(err == CL_SUCCESS);
 	*/
-	err = clEnqueueReadBuffer(queue, tree->execute_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(clbpt_packet), tree->execute_buf, 0, NULL, NULL);
-	assert(err == CL_SUCCESS);
-	err = clEnqueueReadBuffer(queue, tree->result_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(void *), tree->execute_result_buf, 0, NULL, NULL);
-	assert(err == CL_SUCCESS);
-
-	_clbptPacketSort(tree->execute_buf, tree->execute_result_buf, tree->buf_size);
-
-	err = clEnqueueWriteBuffer(queue, tree->execute_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(clbpt_packet), tree->execute_buf, 0, NULL, NULL);
-	assert(err == CL_SUCCESS);
-	err = clEnqueueWriteBuffer(queue, tree->result_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(void *), tree->execute_result_buf, 0, NULL, NULL);
-	assert(err == CL_SUCCESS);
-
-	return isEmpty;
 }
 
 int _clbptHandleExecuteBuffer(clbpt_tree tree)
