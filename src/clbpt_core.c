@@ -419,9 +419,18 @@ int _clbptSelectFromWaitBuffer(clbpt_tree tree)
 	*/
 
 	if (tree->readOnlyMode == 1) {
-		isEmpty = 1;
+		if (tree->wait_buf[0] == PACKET_NOP)
+			return 1;
+
+		isEmpty = 0;
 		memcpy(tree->execute_buf, tree->wait_buf, 
 			tree->buf_size * sizeof(clbpt_packet));
+		memcpy(tree->execute_result_buf, tree->wait_result_buf, 
+			tree->buf_size * sizeof(void *));
+		for(int i = 0; i < tree->buf_size; i++)
+		{
+			tree->wait_buf[i] = PACKET_NOP;
+		}
 		_clbptPacketSort(tree->execute_buf, tree->execute_result_buf, tree->buf_size);
 		err = clEnqueueWriteBuffer(queue, tree->execute_buf_d, CL_TRUE, 0, tree->buf_size * sizeof(clbpt_packet), tree->execute_buf, 0, NULL, NULL);
 		assert(err == CL_SUCCESS);
