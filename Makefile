@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-I ${AMDAPPSDKROOT}/include -I src/ -I src/KMA/ -O3 -std=c11 -pg 
+CFLAGS=-I ${AMDAPPSDKROOT}/include -I src/ -I src/KMA/ -O3 -std=c11 -march=native 
 LDFLAGS=-L ${AMDAPPSDKROOT}/lib/x86_64 -lOpenCL -lpthread
 DEPS=src/clbpt_type.h src/clbpt.h src/clbpt_core.h src/KMA/kma.h # src/KMA/clheap.h src/KMA/clIndexedQueue.h 
 OBJS=obj/main.o obj/clbpt.o obj/clbpt_core.o obj/kma.o

@@ -11,7 +11,6 @@
 
 // Size and Order
 static size_t max_local_work_size;		// get this value in _clbptInitialize
-static uint32_t order = 4;	// get this value in _clbptInitialize
 
 /*
 void insertionSort(clbpt_packet *execute_buf, void **result_buf, int l, int h)
@@ -86,12 +85,15 @@ int permListComp(const void *a, const void *b)
 {
 	int aKey = getKeyFromPacket(execute_buf_hook[*(const int *)a]);
 	int bKey = getKeyFromPacket(execute_buf_hook[*(const int *)b]);
+	/*
 	if (aKey < bKey)
 		return -1;
 	else if (aKey == bKey)
 		return 0;
 	else
 		return 1;
+	*/
+	return aKey - bKey;
 }
 
 void _clbptPacketSort(clbpt_packet *execute_buf, void **execute_result_buf, uint32_t buf_size)
@@ -318,8 +320,6 @@ int _clbptInitialize(clbpt_tree tree)
 	assert(err == CL_SUCCESS);
 	//_clbptDebug( "Device Maximum Work Item Sizes = %zu x %zu x %zu\n", max_work_item_sizes[0], max_work_item_sizes[1], max_work_item_sizes[2]);
 	max_local_work_size = max_work_item_sizes[0];	// one dimension
-	if (tree->order <= 0)
-		tree->order = order;
 		//tree->order = max_local_work_size/2;
 	_clbptDebug( "Tree Order = %d\n", tree->order);
 
@@ -573,8 +573,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 			else
 				node_addr = tree->node_addr_buf[i];
 		}
-
-		if (isSearchPacket(pkt))
+		else if (isSearchPacket(pkt))
 		{
 			tree->instr_result_buf[i] = search_leaf(key, node_addr, tree->execute_result_buf[i], tree->record_size);
 		}
@@ -954,7 +953,7 @@ int handle_leftmost_node(clbpt_tree tree, clbpt_leaf_node *node)
 	return 0;
 }
 
-int search_leaf(int32_t key, void *node_addr, void *result_addr, size_t record_size)
+int __attribute__((noinline)) search_leaf(int32_t key, void *node_addr, void *result_addr, size_t record_size)
 {
 	int existed = 0;
 	clbpt_leaf_node *node;
@@ -972,7 +971,7 @@ int search_leaf(int32_t key, void *node_addr, void *result_addr, size_t record_s
 			memcpy(result_addr, entry->record_ptr, record_size);
 			break;
 		}
-		if (entry->key > key)
+		else if (entry->key > key)
 		{
 			result_addr = NULL;
 			break;
