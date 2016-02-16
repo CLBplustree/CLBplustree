@@ -128,7 +128,7 @@ void _clbptPacketSort(clbpt_packet *execute_buf, void **execute_result_buf, uint
 int handle_node(clbpt_tree tree, void *node_addr, void *leftmost_node_addr);
 int handle_leftmost_node(clbpt_tree tree, clbpt_leaf_node *node);
 
-int search_leaf(int32_t key, void *node_addr, void *result_addr, size_t record_size);
+int search_leaf(int32_t key, void *node_addr, void *result_addr, size_t record_size, void **entry_addr);
 int range_leaf(int32_t key, int32_t key_upper, void *node_addr, void *result_addr, size_t record_size);
 int insert_leaf(int32_t key, void *node_addr, void *record_addr, size_t record_size, int order);
 int delete_leaf(int32_t key, void *node_addr);
@@ -532,50 +532,61 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 	void *leftmost_node_addr = NULL;
 	tree->num_ins = 0;
 	tree->num_del = 0;
+	void *last_entry_addr = NULL;
 
 	node_addr = tree->node_addr_buf[0];
 
 	// Scan through the execute buffer
 	for(int i = 0, j = 0; i < tree->buf_size; i++)
 	{
+		int nodeChanged = (node_addr != tree->node_addr_buf[i] && i != 0);
+
 		//fprintf(stderr, "node_addr = %p\n", tree->node_addr_buf[i]);
 		pkt = tree->execute_buf[i];
 		key = getKeyFromPacket(pkt);
-
-		if (i == tree->buf_size ||
-			isNopPacket(pkt) ||						// Reach the end of the execute buffer
-			node_addr != tree->node_addr_buf[i])	// Accessed node changed	
-		{
-			if (i == 0)	// Do nothing if the execute buffer is empty
-				break;
-
-			node_result = handle_node(tree, node_addr, leftmost_node_addr);	// Handle the last operated node
-
-			if (node_result == leftMostNodeBorrowMerge)
+		
+		if (tree->readOnlyMode == 0) {
+			if (i == tree->buf_size ||
+				isNopPacket(pkt) ||						// Reach the end of the execute buffer
+				node_addr != tree->node_addr_buf[i])	// Accessed node changed	
 			{
-				leftmost_node_addr = node_addr;
-			}
-			else if (node_result == mergeWithLeftMostNode)
-			{
-				leftmost_node_addr = NULL;
-			}
+				if (i == 0)	// Do nothing if the execute buffer is empty
+					break;
 
-			if (leftmost_node_addr != NULL &&
-				((clbpt_leaf_node *)node_addr)->mirror->parent !=
-				((clbpt_leaf_node *)leftmost_node_addr)->mirror->parent)	// node's parent is different with leftmost node's, handle leftmost node
-			{
-				handle_leftmost_node(tree, leftmost_node_addr);
-				leftmost_node_addr = NULL;
-			}
+				node_result = handle_node(tree, node_addr, leftmost_node_addr);	// Handle the last operated node
 
-			if (i == tree->buf_size || isNopPacket(pkt))	// Reach the end of the execute buffer
-				break;
-			else
-				node_addr = tree->node_addr_buf[i];
+				if (node_result == leftMostNodeBorrowMerge)
+				{
+					leftmost_node_addr = node_addr;
+				}
+				else if (node_result == mergeWithLeftMostNode)
+				{
+					leftmost_node_addr = NULL;
+				}
+
+				if (leftmost_node_addr != NULL &&
+					((clbpt_leaf_node *)node_addr)->mirror->parent !=
+					((clbpt_leaf_node *)leftmost_node_addr)->mirror->parent)	// node's parent is different with leftmost node's, handle leftmost node
+				{
+					handle_leftmost_node(tree, leftmost_node_addr);
+					leftmost_node_addr = NULL;
+				}
+
+			}
 		}
+
+		if (i == tree->buf_size || isNopPacket(pkt))	// Reach the end of the execute buffer
+			break;
+		else
+			node_addr = tree->node_addr_buf[i];
+
 		if (isSearchPacket(pkt))
 		{
-			tree->instr_result_buf[i] = search_leaf(key, node_addr, tree->execute_result_buf[i], tree->record_size);
+			if (nodeChanged)
+				tree->instr_result_buf[i] = search_leaf(key, node_addr, tree->execute_result_buf[i], tree->record_size, &last_entry_addr);
+			else {
+				tree->instr_result_buf[i] = search_leaf(key, NULL, tree->execute_result_buf[i], tree->record_size, &last_entry_addr);
+			}
 		}
 		else if (isRangePacket(pkt))
 		{
@@ -953,14 +964,19 @@ int handle_leftmost_node(clbpt_tree tree, clbpt_leaf_node *node)
 	return 0;
 }
 
-int __attribute__((noinline)) search_leaf(int32_t key, void *node_addr, void *result_addr, size_t record_size)
+int __attribute__((noinline)) search_leaf(int32_t key, void *node_addr, void *result_addr, size_t record_size, void **entry_addr)
 {
 	int existed = 0;
 	clbpt_leaf_node *node;
 	clbpt_leaf_entry *entry;
-
-	node = node_addr;
-	entry = node->head;
+	
+	if (node_addr == NULL) { // If node_addr is not given, directly use entry_addr
+		entry = *entry_addr;
+	}
+	else {
+		node = node_addr;
+		entry = node->head;
+	}
 
 	// Scan through entries
 	while (entry != NULL)
@@ -968,12 +984,14 @@ int __attribute__((noinline)) search_leaf(int32_t key, void *node_addr, void *re
 		if (entry->key == key)
 		{
 			existed = 1;
+			*entry_addr = entry;
 			memcpy(result_addr, entry->record_ptr, record_size);
 			break;
 		}
 		else if (entry->key > key)
 		{
 			result_addr = NULL;
+			*entry_addr = entry;
 			break;
 		}
 		entry = entry->next;
