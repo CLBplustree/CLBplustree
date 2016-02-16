@@ -573,7 +573,7 @@ int _clbptHandleExecuteBuffer(clbpt_tree tree)
 			else
 				node_addr = tree->node_addr_buf[i];
 		}
-		else if (isSearchPacket(pkt))
+		if (isSearchPacket(pkt))
 		{
 			tree->instr_result_buf[i] = search_leaf(key, node_addr, tree->execute_result_buf[i], tree->record_size);
 		}
