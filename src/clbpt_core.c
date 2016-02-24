@@ -964,7 +964,7 @@ int handle_leftmost_node(clbpt_tree tree, clbpt_leaf_node *node)
 	return 0;
 }
 
-int __attribute__((noinline)) search_leaf(int32_t key, void *node_addr, void *result_addr, size_t record_size, void **entry_addr)
+int search_leaf(int32_t key, void *node_addr, void *result_addr, size_t record_size, void **entry_addr)
 {
 	int existed = 0;
 	clbpt_leaf_node *node;
